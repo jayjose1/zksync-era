@@ -16,13 +16,17 @@ fn l1_batch_range_from_batches(
 ) -> ops::RangeInclusive<L1BatchNumber> {
     let start = batches
         .first()
-        .map(|l1_batch| l1_batch.header.number)
+        .map(|l1_batch| l1_batch.header.params.number)
         .unwrap_or_default();
     let end = batches
         .last()
-        .map(|l1_batch| l1_batch.header.number)
+        .map(|l1_batch| l1_batch.header.params.number)
         .unwrap_or_default();
     start..=end
+}
+
+fn first_protocol_version(l1_batches: &[L1BatchWithMetadata]) -> ProtocolVersionId {
+    l1_batches[0].header.params.protocol_version.unwrap()
 }
 
 #[derive(Debug, Clone)]
@@ -98,13 +102,8 @@ impl L1BatchProofOperation {
             } = self.proofs.first().unwrap();
 
             let (_, proof) = serialize_proof(scheduler_proof);
-
-            let aggregation_result_coords = if self.l1_batches[0]
-                .header
-                .protocol_version
-                .unwrap()
-                .is_pre_boojum()
-            {
+            let first_protocol_version = first_protocol_version(&self.l1_batches);
+            let aggregation_result_coords = if first_protocol_version.is_pre_boojum() {
                 Token::Array(
                     aggregation_result_coords
                         .iter()
@@ -228,10 +227,11 @@ impl AggregatedOperation {
     }
 
     pub fn protocol_version(&self) -> ProtocolVersionId {
-        match self {
-            Self::Commit(op) => op.l1_batches[0].header.protocol_version.unwrap(),
-            Self::PublishProofOnchain(op) => op.l1_batches[0].header.protocol_version.unwrap(),
-            Self::Execute(op) => op.l1_batches[0].header.protocol_version.unwrap(),
-        }
+        let l1_batches = match self {
+            Self::Commit(op) => &op.l1_batches,
+            Self::PublishProofOnchain(op) => &op.l1_batches,
+            Self::Execute(op) => &op.l1_batches,
+        };
+        first_protocol_version(l1_batches)
     }
 }

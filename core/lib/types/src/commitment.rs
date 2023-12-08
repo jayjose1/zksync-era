@@ -114,14 +114,14 @@ impl L1BatchWithMetadata {
         header: &'a L1BatchHeader,
         unsorted_factory_deps: &'a HashMap<H256, Vec<u8>>,
     ) -> impl Iterator<Item = &'a [u8]> + 'a {
-        header.l2_to_l1_logs.iter().filter_map(move |log| {
+        header.result.l2_to_l1_logs.iter().filter_map(move |log| {
             let inner = &log.0;
             if inner.sender == KNOWN_CODES_STORAGE_ADDRESS {
                 let bytecode = unsorted_factory_deps.get(&inner.key).unwrap_or_else(|| {
                     panic!(
                         "Failed to get bytecode that was marked as known: bytecode_hash {:?}, \
                              L1 batch number {:?}",
-                        inner.key, header.number
+                        inner.key, header.params.number
                     );
                 });
                 Some(bytecode.as_slice())
@@ -132,43 +132,36 @@ impl L1BatchWithMetadata {
     }
 
     pub fn l1_header_data(&self) -> Token {
+        let L1BatchHeader { params, result } = &self.header;
         Token::Tuple(vec![
-            Token::Uint(U256::from(self.header.number.0)),
+            Token::Uint(U256::from(params.number.0)),
             Token::FixedBytes(self.metadata.root_hash.as_bytes().to_vec()),
             Token::Uint(U256::from(self.metadata.rollup_last_leaf_index)),
-            Token::Uint(U256::from(self.header.l1_tx_count)),
-            Token::FixedBytes(
-                self.header
-                    .priority_ops_onchain_data_hash()
-                    .as_bytes()
-                    .to_vec(),
-            ),
+            Token::Uint(U256::from(result.l1_tx_count)),
+            Token::FixedBytes(result.priority_ops_onchain_data_hash().as_bytes().to_vec()),
             Token::FixedBytes(self.metadata.l2_l1_merkle_root.as_bytes().to_vec()),
-            Token::Uint(U256::from(self.header.timestamp)),
+            Token::Uint(U256::from(params.timestamp)),
             Token::FixedBytes(self.metadata.commitment.as_bytes().to_vec()),
         ])
     }
 
     pub fn l1_commit_data(&self) -> Token {
-        if self.header.protocol_version.unwrap().is_pre_boojum() {
+        let L1BatchHeader { params, result } = &self.header;
+
+        if params.protocol_version.unwrap().is_pre_boojum() {
             Token::Tuple(vec![
-                Token::Uint(U256::from(self.header.number.0)),
-                Token::Uint(U256::from(self.header.timestamp)),
+                Token::Uint(U256::from(params.number.0)),
+                Token::Uint(U256::from(params.timestamp)),
                 Token::Uint(U256::from(self.metadata.rollup_last_leaf_index)),
                 Token::FixedBytes(self.metadata.merkle_root_hash.as_bytes().to_vec()),
-                Token::Uint(U256::from(self.header.l1_tx_count)),
+                Token::Uint(U256::from(result.l1_tx_count)),
                 Token::FixedBytes(self.metadata.l2_l1_merkle_root.as_bytes().to_vec()),
-                Token::FixedBytes(
-                    self.header
-                        .priority_ops_onchain_data_hash()
-                        .as_bytes()
-                        .to_vec(),
-                ),
+                Token::FixedBytes(result.priority_ops_onchain_data_hash().as_bytes().to_vec()),
                 Token::Bytes(self.metadata.initial_writes_compressed.clone()),
                 Token::Bytes(self.metadata.repeated_writes_compressed.clone()),
                 Token::Bytes(self.metadata.l2_l1_messages_compressed.clone()),
                 Token::Array(
-                    self.header
+                    result
                         .l2_to_l1_messages
                         .iter()
                         .map(|message| Token::Bytes(message.to_vec()))
@@ -183,17 +176,12 @@ impl L1BatchWithMetadata {
             ])
         } else {
             Token::Tuple(vec![
-                Token::Uint(U256::from(self.header.number.0)),
-                Token::Uint(U256::from(self.header.timestamp)),
+                Token::Uint(U256::from(params.number.0)),
+                Token::Uint(U256::from(params.timestamp)),
                 Token::Uint(U256::from(self.metadata.rollup_last_leaf_index)),
                 Token::FixedBytes(self.metadata.merkle_root_hash.as_bytes().to_vec()),
-                Token::Uint(U256::from(self.header.l1_tx_count)),
-                Token::FixedBytes(
-                    self.header
-                        .priority_ops_onchain_data_hash()
-                        .as_bytes()
-                        .to_vec(),
-                ),
+                Token::Uint(U256::from(result.l1_tx_count)),
+                Token::FixedBytes(result.priority_ops_onchain_data_hash().as_bytes().to_vec()),
                 Token::FixedBytes(
                     self.metadata
                         .bootloader_initial_content_commitment
@@ -222,17 +210,18 @@ impl L1BatchWithMetadata {
     /// following: logs, messages, bytecodes, and compressed state diffs.
     /// This data is currently part of calldata but will be submitted as part of the blob section post EIP-4844.
     pub fn construct_pubdata(&self) -> Vec<u8> {
+        let result = &self.header.result;
         let mut res: Vec<u8> = vec![];
 
         // Process and Pack Logs
-        res.extend((self.header.l2_to_l1_logs.len() as u32).to_be_bytes());
-        for l2_to_l1_log in &self.header.l2_to_l1_logs {
+        res.extend((result.l2_to_l1_logs.len() as u32).to_be_bytes());
+        for l2_to_l1_log in &result.l2_to_l1_logs {
             res.extend(l2_to_l1_log.0.to_bytes());
         }
 
         // Process and Pack Msgs
-        res.extend((self.header.l2_to_l1_messages.len() as u32).to_be_bytes());
-        for msg in &self.header.l2_to_l1_messages {
+        res.extend((result.l2_to_l1_messages.len() as u32).to_be_bytes());
+        for msg in &result.l2_to_l1_messages {
             res.extend((msg.len() as u32).to_be_bytes());
             res.extend(msg);
         }
@@ -246,7 +235,6 @@ impl L1BatchWithMetadata {
 
         // Extend with Compressed StateDiffs
         res.extend(&self.metadata.state_diffs_compressed);
-
         res
     }
 }

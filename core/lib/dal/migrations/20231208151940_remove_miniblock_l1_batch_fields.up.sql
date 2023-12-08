@@ -1,0 +1,9 @@
+ALTER TABLE miniblocks
+    DROP CONSTRAINT "miniblocks_protocol_version_fkey";
+ALTER TABLE miniblocks
+    DROP COLUMN base_fee_per_gas,
+    DROP COLUMN l1_gas_price,
+    DROP COLUMN l2_fair_gas_price,
+    DROP COLUMN bootloader_code_hash,
+    DROP COLUMN default_aa_code_hash,
+    DROP COLUMN protocol_version;

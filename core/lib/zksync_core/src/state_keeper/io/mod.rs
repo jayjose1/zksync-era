@@ -35,14 +35,39 @@ mod tests;
 ///
 /// Invariant is that there may be not more than 1 pending batch, and it's always the latest batch.
 #[derive(Debug)]
-pub struct PendingBatchData {
+pub struct PendingBatchData<Sys = SystemEnv> {
     /// Data used to initialize the pending batch. We have to make sure that all the parameters
     /// (e.g. timestamp) are the same, so transaction would have the same result after re-execution.
+    pub(crate) system_env: Sys,
     pub(crate) l1_batch_env: L1BatchEnv,
-    pub(crate) system_env: SystemEnv,
     /// List of miniblocks and corresponding transactions that were executed within batch.
     pub(crate) pending_miniblocks: Vec<MiniblockExecutionData>,
 }
+
+#[derive(Debug)]
+pub(crate) struct SystemEnvWithoutProtocolVersion(SystemEnv);
+
+impl fmt::Display for SystemEnvWithoutProtocolVersion {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "no protocol version is defined for `SystemEnv`")
+    }
+}
+
+impl std::error::Error for SystemEnvWithoutProtocolVersion {}
+
+impl SystemEnvWithoutProtocolVersion {
+    pub fn with_version(self, version: ProtocolVersionId) -> SystemEnv {
+        SystemEnv { version, ..self.0 }
+    }
+}
+
+impl From<SystemEnv> for SystemEnvWithoutProtocolVersion {
+    fn from(env: SystemEnv) -> Self {
+        Self(env)
+    }
+}
+
+pub(crate) type SystemEnvResult = Result<SystemEnv, SystemEnvWithoutProtocolVersion>;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct MiniblockParams {

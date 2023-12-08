@@ -13,7 +13,7 @@ use zksync_types::{
 use zksync_utils::u256_to_h256;
 
 use super::PendingBatchData;
-use crate::state_keeper::extractors;
+use crate::state_keeper::{extractors, io::SystemEnvResult};
 
 /// Returns the parameters required to initialize the VM for the next L1 batch.
 #[allow(clippy::too_many_arguments)]
@@ -74,7 +74,7 @@ pub(crate) async fn load_l1_batch_params(
     current_l1_batch_number: L1BatchNumber,
     validation_computational_gas_limit: u32,
     chain_id: L2ChainId,
-) -> Option<(SystemEnv, L1BatchEnv)> {
+) -> Option<(SystemEnvResult, L1BatchEnv)> {
     let init_params = storage
         .blocks_dal()
         .get_l1_batch_initial_params(current_l1_batch_number)
@@ -123,9 +123,10 @@ pub(crate) async fn load_l1_batch_params(
             init_params.base_system_contracts_hashes.default_aa,
         )
         .await;
-
     tracing::info!("Previous l1_batch_hash: {}", previous_l1_batch_hash);
-    Some(l1_batch_params(
+
+    let protocol_version = init_params.protocol_version.unwrap_or_default();
+    let (system_env, l1_batch_env) = l1_batch_params(
         current_l1_batch_number,
         init_params.fee_account_address,
         init_params.timestamp,
@@ -136,12 +137,16 @@ pub(crate) async fn load_l1_batch_params(
         prev_miniblock_hash,
         base_system_contracts,
         validation_computational_gas_limit,
-        init_params
-            .protocol_version
-            .expect("`protocol_version` must be set for pending miniblock"),
+        protocol_version,
         virtual_blocks,
         chain_id,
-    ))
+    );
+    let system_env = if init_params.protocol_version.is_some() {
+        Ok(system_env)
+    } else {
+        Err(system_env.into())
+    };
+    Some((system_env, l1_batch_env))
 }
 
 /// Loads the pending L1 batch data from the database.
@@ -150,7 +155,7 @@ pub(crate) async fn load_pending_batch(
     current_l1_batch_number: L1BatchNumber,
     validation_computational_gas_limit: u32,
     chain_id: L2ChainId,
-) -> Option<PendingBatchData> {
+) -> Option<PendingBatchData<SystemEnvResult>> {
     let (system_env, l1_batch_env) = load_l1_batch_params(
         storage,
         current_l1_batch_number,

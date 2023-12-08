@@ -47,6 +47,8 @@ pub(super) fn create_vm(
             l2_chain_id,
         ))
         .context("expected miniblock to be executed and sealed")?;
+    let system_env =
+        system_env.context("Protocol version is always set for pending L1 batch on main node")?;
 
     let pg_storage = PostgresStorage::new(rt_handle.clone(), connection, miniblock_number, true);
     let storage_view = StorageView::new(pg_storage).to_rc_ptr();

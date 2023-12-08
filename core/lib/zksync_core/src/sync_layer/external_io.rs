@@ -21,7 +21,7 @@ use crate::{
     state_keeper::{
         extractors,
         io::{
-            common::{l1_batch_params, poll_iters, save_l1_batch_init_params},
+            common::{l1_batch_params, load_pending_batch, poll_iters, save_l1_batch_init_params},
             MiniblockParams, MiniblockSealerHandle, PendingBatchData, StateKeeperIO,
         },
         metrics::KEEPER_METRICS,
@@ -242,50 +242,50 @@ impl StateKeeperIO for ExternalIO {
     }
 
     async fn load_pending_batch(&mut self) -> Option<PendingBatchData> {
-        None // FIXME
-             /*let mut storage = self.pool.access_storage_tagged("sync_layer").await.unwrap();
+        let mut storage = self.pool.access_storage_tagged("sync_layer").await.unwrap();
+        let PendingBatchData {
+            system_env,
+            l1_batch_env,
+            pending_miniblocks,
+        } = load_pending_batch(
+            &mut storage,
+            self.current_l1_batch_number,
+            self.validation_computational_gas_limit,
+            self.chain_id,
+        )
+        .await?;
 
-             let pending_miniblock_number = {
-                 let (_, last_miniblock_number_included_in_l1_batch) = storage
-                     .blocks_dal()
-                     .get_miniblock_range_of_l1_batch(self.current_l1_batch_number - 1)
-                     .await
-                     .unwrap()
-                     .unwrap();
-                 last_miniblock_number_included_in_l1_batch + 1
-             };
-             let pending_miniblock_header = storage
-                 .blocks_dal()
-                 .get_miniblock_header(pending_miniblock_number)
-                 .await
-                 .unwrap()?;
+        let system_env = match system_env {
+            Ok(env) => env,
+            Err(env) => {
+                let pending_miniblock_number = l1_batch_env.first_l2_block.number;
+                // Fetch protocol version ID to know which VM to use to re-execute them.
+                let sync_block = self
+                    .main_node_client
+                    .fetch_l2_block(MiniblockNumber(pending_miniblock_number), false)
+                    .await
+                    .expect("Failed to fetch block from the main node")
+                    .expect("Block must exist");
+                // Loading base system contracts will insert protocol version in the database if it's not present there.
+                self.load_base_system_contracts_by_version_id(sync_block.protocol_version)
+                    .await;
+                storage
+                    .blocks_dal()
+                    .set_protocol_version_for_l1_batch(
+                        self.current_l1_batch_number,
+                        sync_block.protocol_version,
+                    )
+                    .await
+                    .unwrap();
+                env.with_version(sync_block.protocol_version)
+            }
+        };
 
-             if pending_miniblock_header.protocol_version.is_none() {
-                 // Fetch protocol version ID for pending miniblocks to know which VM to use to re-execute them.
-                 let sync_block = self
-                     .main_node_client
-                     .fetch_l2_block(pending_miniblock_header.number, false)
-                     .await
-                     .expect("Failed to fetch block from the main node")
-                     .expect("Block must exist");
-                 // Loading base system contracts will insert protocol version in the database if it's not present there.
-                 let _ = self
-                     .load_base_system_contracts_by_version_id(sync_block.protocol_version)
-                     .await;
-                 storage
-                     .blocks_dal()
-                     .set_protocol_version_for_pending_miniblocks(sync_block.protocol_version)
-                     .await
-                     .unwrap();
-             }
-
-             load_pending_batch(
-                 &mut storage,
-                 self.current_l1_batch_number,
-                 self.validation_computational_gas_limit,
-                 self.chain_id,
-             )
-             .await*/
+        Some(PendingBatchData {
+            system_env,
+            l1_batch_env,
+            pending_miniblocks,
+        })
     }
 
     async fn wait_for_new_batch_params(

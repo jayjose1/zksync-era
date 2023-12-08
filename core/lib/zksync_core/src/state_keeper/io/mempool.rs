@@ -110,6 +110,9 @@ where
             self.chain_id,
         )
         .await?;
+        let system_env =
+            system_env.expect("Protocol version is always set for pending L1 batch on main node");
+
         // Initialize the filter for the transactions that come after the pending batch.
         // We use values from the pending block to match the filter with one used before the restart.
         let (base_fee, gas_per_pubdata) = derive_base_fee_and_gas_per_pubdata(

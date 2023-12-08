@@ -72,7 +72,7 @@ impl BlocksWeb3Dal<'_, '_> {
                 miniblocks.number,
                 miniblocks.l1_batch_number,
                 miniblocks.timestamp,
-                miniblocks.base_fee_per_gas,
+                l1_batch_init_params.base_fee_per_gas,
                 prev_miniblock.hash as parent_hash,
                 l1_batch_init_params.timestamp as l1_batch_timestamp,
                 transactions.gas_limit as gas_limit,
@@ -82,7 +82,7 @@ impl BlocksWeb3Dal<'_, '_> {
             LEFT JOIN miniblocks prev_miniblock
                 ON prev_miniblock.number = miniblocks.number - 1
             LEFT JOIN l1_batch_init_params
-                ON l1_batch_init_params.number = miniblocks.l1_batch_number
+                ON l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) \
             LEFT JOIN transactions
                 ON transactions.miniblock_number = miniblocks.number
             WHERE {}",
@@ -586,8 +586,8 @@ impl BlocksWeb3Dal<'_, '_> {
 #[cfg(test)]
 mod tests {
     use zksync_types::{
-        block::{miniblock_hash, MiniblockHeader},
-        MiniblockNumber, ProtocolVersion,
+        block::{miniblock_hash, L1BatchInitialParams, MiniblockHeader},
+        MiniblockNumber, ProtocolVersion, ProtocolVersionId,
     };
 
     use super::*;
@@ -597,13 +597,20 @@ mod tests {
     async fn getting_web3_block_and_tx_count() {
         let connection_pool = ConnectionPool::test_pool().await;
         let mut conn = connection_pool.access_storage().await.unwrap();
-        conn.blocks_dal()
-            .delete_miniblocks(MiniblockNumber(0))
-            .await
-            .unwrap();
         conn.protocol_versions_dal()
             .save_protocol_version_with_tx(ProtocolVersion::default())
             .await;
+        let init_params = L1BatchInitialParams::new(
+            L1BatchNumber(0),
+            0,
+            Address::default(),
+            Default::default(),
+            ProtocolVersionId::default(),
+        );
+        conn.blocks_dal()
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
         let header = MiniblockHeader {
             l1_tx_count: 3,
             l2_tx_count: 5,

@@ -25,7 +25,7 @@ impl SyncDal<'_, '_> {
         let storage_block_details = sqlx::query_as!(
             StorageSyncBlock,
             "SELECT miniblocks.number, \
-                COALESCE(miniblocks.l1_batch_number, (SELECT (MAX(number) + 1) FROM l1_batches)) AS \"l1_batch_number!\", \
+                COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) AS \"l1_batch_number!\", \
                 (SELECT max(m2.number) FROM miniblocks m2 WHERE miniblocks.l1_batch_number = m2.l1_batch_number) as \"last_batch_miniblock?\", \
                 miniblocks.timestamp, \
                 miniblocks.hash as \"root_hash?\", \
@@ -40,7 +40,7 @@ impl SyncDal<'_, '_> {
                 l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
             FROM miniblocks \
             INNER JOIN l1_batch_init_params ON \
-                l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT (MAX(number) + 1) FROM l1_batches)) \
+                l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) \
             WHERE miniblocks.number = $1",
             block_number.0 as i64
         )

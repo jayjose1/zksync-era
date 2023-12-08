@@ -1432,6 +1432,24 @@ impl BlocksDal<'_, '_> {
         Ok(Some((v as u16).try_into()?))
     }
 
+    pub async fn set_protocol_version_for_l1_batch(
+        &mut self,
+        l1_batch_number: L1BatchNumber,
+        version: ProtocolVersionId,
+    ) -> sqlx::Result<()> {
+        sqlx::query!(
+            "UPDATE l1_batch_init_params \
+            SET protocol_version = $1 \
+            WHERE number = $2",
+            version as i32,
+            l1_batch_number.0 as i64
+        )
+        .execute(self.storage.conn())
+        .await?;
+        Ok(())
+    }
+
+    // FIXME: remove in favor of `get_batch_protocol_version_id`?
     pub async fn get_miniblock_protocol_version_id(
         &mut self,
         miniblock_number: MiniblockNumber,

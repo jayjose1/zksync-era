@@ -22,6 +22,42 @@ pub enum StorageL1BatchConvertError {
     Incomplete,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct StorageL1BatchInitialParams {
+    pub number: i64,
+    pub timestamp: i64,
+    pub fee_account_address: Vec<u8>,
+    pub base_fee_per_gas: BigDecimal,
+    pub l1_gas_price: i64,
+    pub l2_fair_gas_price: i64,
+    pub bootloader_code_hash: Option<Vec<u8>>,
+    pub default_aa_code_hash: Option<Vec<u8>>,
+    pub protocol_version: Option<i32>,
+}
+
+impl From<StorageL1BatchInitialParams> for L1BatchInitialParams {
+    fn from(params: StorageL1BatchInitialParams) -> Self {
+        Self {
+            number: L1BatchNumber(params.number as u32),
+            timestamp: params.timestamp as u64,
+            fee_account_address: Address::from_slice(&params.fee_account_address),
+            base_fee_per_gas: params
+                .base_fee_per_gas
+                .to_u64()
+                .expect("base_fee_per_gas should fit in u64"),
+            l1_gas_price: params.l1_gas_price as u64,
+            l2_fair_gas_price: params.l2_fair_gas_price as u64,
+            base_system_contracts_hashes: convert_base_system_contracts_hashes(
+                params.bootloader_code_hash,
+                params.default_aa_code_hash,
+            ),
+            protocol_version: params
+                .protocol_version
+                .map(|v| (v as u16).try_into().unwrap()),
+        }
+    }
+}
+
 /// Projection of the `l1_batches` table corresponding to [`L1BatchHeader`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct StorageL1BatchHeader {

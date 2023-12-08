@@ -11,14 +11,16 @@ use zksync_types::{
     aggregated_operations::AggregatedActionType,
     block::{BlockGasCount, L1BatchHeader, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     commitment::{L1BatchMetadata, L1BatchWithMetadata},
-    Address, L1BatchNumber, LogQuery, MiniblockNumber, ProtocolVersionId, H256,
-    MAX_GAS_PER_PUBDATA_BYTE, U256,
+    L1BatchNumber, LogQuery, MiniblockNumber, ProtocolVersionId, H256, MAX_GAS_PER_PUBDATA_BYTE,
+    U256,
 };
 
 pub use crate::models::storage_sync::ConsensusBlockFields;
 use crate::{
     instrument::InstrumentExt,
-    models::storage_block::{StorageL1Batch, StorageL1BatchHeader, StorageMiniblockHeader},
+    models::storage_block::{
+        StorageL1Batch, StorageL1BatchHeader, StorageL1BatchInitialParams, StorageMiniblockHeader,
+    },
     StorageProcessor,
 };
 
@@ -304,6 +306,31 @@ impl BlocksDal<'_, '_> {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn get_l1_batch_initial_params(
+        &mut self,
+        number: L1BatchNumber,
+    ) -> sqlx::Result<Option<L1BatchInitialParams>> {
+        let maybe_row = sqlx::query_as!(
+            StorageL1BatchInitialParams,
+            "SELECT number, \
+                timestamp, \
+                fee_account_address, \
+                l1_gas_price, \
+                l2_fair_gas_price, \
+                base_fee_per_gas, \
+                protocol_version, \
+                bootloader_code_hash, \
+                default_aa_code_hash \
+            FROM l1_batch_init_params \
+            WHERE number = $1",
+            number.0 as i64
+        )
+        .fetch_optional(self.storage.conn())
+        .await?;
+
+        Ok(maybe_row.map(Into::into))
     }
 
     pub async fn insert_l1_batch(
@@ -1470,19 +1497,6 @@ impl BlocksDal<'_, '_> {
         .execute(self.storage.conn())
         .await?;
         Ok(())
-    }
-
-    pub async fn get_fee_address_for_l1_batch(
-        &mut self,
-        l1_batch_number: L1BatchNumber,
-    ) -> sqlx::Result<Option<Address>> {
-        Ok(sqlx::query!(
-            "SELECT fee_account_address FROM l1_batch_init_params WHERE number = $1",
-            l1_batch_number.0 as u32
-        )
-        .fetch_optional(self.storage.conn())
-        .await?
-        .map(|row| Address::from_slice(&row.fee_account_address)))
     }
 
     pub async fn get_virtual_blocks_for_miniblock(

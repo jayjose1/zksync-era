@@ -26,6 +26,7 @@ impl L1BatchEnv {
             derive_base_fee_and_gas_per_pubdata(self.l1_gas_price, self.fair_l2_gas_price);
         base_fee
     }
+
     pub(crate) fn block_gas_price_per_pubdata(&self) -> u64 {
         derive_base_fee_and_gas_per_pubdata(self.l1_gas_price, self.fair_l2_gas_price).1
     }

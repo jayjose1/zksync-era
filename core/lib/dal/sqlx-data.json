@@ -3050,26 +3050,6 @@
     },
     "query": "INSERT INTO eth_txs_history (eth_tx_id, base_fee_per_gas, priority_fee_per_gas, tx_hash, signed_raw_tx, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now()) ON CONFLICT (tx_hash) DO NOTHING RETURNING id"
   },
-  "3a804f93cb7aeafc547b9c3d51c32abb915b325a353058b7d33c8752d8a261a6": {
-    "describe": {
-      "columns": [
-        {
-          "name": "fee_account_address",
-          "ordinal": 0,
-          "type_info": "Bytea"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT fee_account_address FROM l1_batch_init_params WHERE number = $1"
-  },
   "3ac1fe562e9664bbf8c02ba3090cf97a37663e228eff48fec326f74b2313daa9": {
     "describe": {
       "columns": [],
@@ -4230,6 +4210,74 @@
       }
     },
     "query": "INSERT INTO contracts_verification_info (address, verification_info) VALUES ($1, $2) ON CONFLICT (address) DO UPDATE SET verification_info = $2"
+  },
+  "597ef44cbad5e95e02ed3150661f56716758fdaac4485b0d8f057bf7f2b95593": {
+    "describe": {
+      "columns": [
+        {
+          "name": "number",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "timestamp",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "fee_account_address",
+          "ordinal": 2,
+          "type_info": "Bytea"
+        },
+        {
+          "name": "l1_gas_price",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "l2_fair_gas_price",
+          "ordinal": 4,
+          "type_info": "Int8"
+        },
+        {
+          "name": "base_fee_per_gas",
+          "ordinal": 5,
+          "type_info": "Numeric"
+        },
+        {
+          "name": "protocol_version",
+          "ordinal": 6,
+          "type_info": "Int4"
+        },
+        {
+          "name": "bootloader_code_hash",
+          "ordinal": 7,
+          "type_info": "Bytea"
+        },
+        {
+          "name": "default_aa_code_hash",
+          "ordinal": 8,
+          "type_info": "Bytea"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT number, timestamp, fee_account_address, l1_gas_price, l2_fair_gas_price, base_fee_per_gas, protocol_version, bootloader_code_hash, default_aa_code_hash FROM l1_batch_init_params WHERE number = $1"
   },
   "59a318fc330369353f2570bfef09909d11e22a1c76ba5277839a6866d8e796b6": {
     "describe": {

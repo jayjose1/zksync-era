@@ -117,19 +117,13 @@ pub struct L1BatchHeader {
 }
 
 /// Holder for the miniblock metadata that is not available from transactions themselves.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MiniblockHeader {
     pub number: MiniblockNumber,
     pub timestamp: u64,
     pub hash: H256,
     pub l1_tx_count: u16,
     pub l2_tx_count: u16,
-    pub base_fee_per_gas: u64, // Min wei per gas that txs in this miniblock need to have.
-
-    pub l1_gas_price: u64, // L1 gas price assumed in the corresponding batch
-    pub l2_fair_gas_price: u64, // L2 gas price assumed in the corresponding batch
-    pub base_system_contracts_hashes: BaseSystemContractsHashes,
-    pub protocol_version: Option<ProtocolVersionId>,
     /// The maximal number of virtual blocks to be created in the miniblock.
     pub virtual_blocks: u32,
 }

@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use zksync_contracts::BaseSystemContractsHashes;
 use zksync_types::{
     block::{miniblock_hash, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     fee::{Fee, TransactionExecutionMetrics},
@@ -35,11 +34,6 @@ pub(crate) fn create_miniblock_header(number: u32) -> MiniblockHeader {
         hash: miniblock_hash(MiniblockNumber(number), 0, H256::zero(), H256::zero()),
         l1_tx_count: 0,
         l2_tx_count: 0,
-        base_fee_per_gas: 100,
-        l1_gas_price: 100,
-        l2_fair_gas_price: 100,
-        base_system_contracts_hashes: BaseSystemContractsHashes::default(),
-        protocol_version: Some(ProtocolVersionId::default()),
         virtual_blocks: 1,
     }
 }

@@ -534,21 +534,13 @@ impl From<StorageL1BatchDetails> for api::L1BatchDetails {
     }
 }
 
+#[derive(Debug)]
 pub struct StorageMiniblockHeader {
     pub number: i64,
     pub timestamp: i64,
     pub hash: Vec<u8>,
     pub l1_tx_count: i32,
     pub l2_tx_count: i32,
-    pub base_fee_per_gas: BigDecimal,
-    pub l1_gas_price: i64,
-    // L1 gas price assumed in the corresponding batch
-    pub l2_fair_gas_price: i64,
-    // L2 gas price assumed in the corresponding batch
-    pub bootloader_code_hash: Option<Vec<u8>>,
-    pub default_aa_code_hash: Option<Vec<u8>>,
-    pub protocol_version: Option<i32>,
-
     // The maximal number of virtual blocks that can be created with this miniblock.
     // If this value is greater than zero, then at least 1 will be created, but no more than
     // min(virtual_blocks, miniblock_number - virtual_block_number), i.e. making sure that virtual blocks
@@ -564,14 +556,6 @@ impl From<StorageMiniblockHeader> for MiniblockHeader {
             hash: H256::from_slice(&row.hash),
             l1_tx_count: row.l1_tx_count as u16,
             l2_tx_count: row.l2_tx_count as u16,
-            base_fee_per_gas: row.base_fee_per_gas.to_u64().unwrap(),
-            l1_gas_price: row.l1_gas_price as u64,
-            l2_fair_gas_price: row.l2_fair_gas_price as u64,
-            base_system_contracts_hashes: convert_base_system_contracts_hashes(
-                row.bootloader_code_hash,
-                row.default_aa_code_hash,
-            ),
-            protocol_version: row.protocol_version.map(|v| (v as u16).try_into().unwrap()),
             virtual_blocks: row.virtual_blocks as u32,
         }
     }

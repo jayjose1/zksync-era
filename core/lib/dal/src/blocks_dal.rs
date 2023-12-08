@@ -415,33 +415,18 @@ impl BlocksDal<'_, '_> {
         &mut self,
         miniblock_header: &MiniblockHeader,
     ) -> anyhow::Result<()> {
-        let base_fee_per_gas = BigDecimal::from_u64(miniblock_header.base_fee_per_gas)
-            .context("base_fee_per_gas should fit in u64")?;
         sqlx::query!(
             "INSERT INTO miniblocks ( \
                 number, timestamp, hash, l1_tx_count, l2_tx_count, \
-                base_fee_per_gas, l1_gas_price, l2_fair_gas_price, gas_per_pubdata_limit, \
-                bootloader_code_hash, default_aa_code_hash, protocol_version, \
+                gas_per_pubdata_limit, \
                 virtual_blocks, created_at, updated_at \
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now())",
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())",
             miniblock_header.number.0 as i64,
             miniblock_header.timestamp as i64,
             miniblock_header.hash.as_bytes(),
             miniblock_header.l1_tx_count as i32,
             miniblock_header.l2_tx_count as i32,
-            base_fee_per_gas,
-            miniblock_header.l1_gas_price as i64,
-            miniblock_header.l2_fair_gas_price as i64,
             MAX_GAS_PER_PUBDATA_BYTE as i64,
-            miniblock_header
-                .base_system_contracts_hashes
-                .bootloader
-                .as_bytes(),
-            miniblock_header
-                .base_system_contracts_hashes
-                .default_aa
-                .as_bytes(),
-            miniblock_header.protocol_version.map(|v| v as i32),
             miniblock_header.virtual_blocks as i64,
         )
         .execute(self.storage.conn())
@@ -474,10 +459,7 @@ impl BlocksDal<'_, '_> {
     ) -> sqlx::Result<Option<MiniblockHeader>> {
         Ok(sqlx::query_as!(
             StorageMiniblockHeader,
-            "SELECT number, timestamp, hash, l1_tx_count, l2_tx_count, \
-                base_fee_per_gas, l1_gas_price, l2_fair_gas_price, \
-                bootloader_code_hash, default_aa_code_hash, protocol_version, \
-                virtual_blocks
+            "SELECT number, timestamp, hash, l1_tx_count, l2_tx_count, virtual_blocks \
             FROM miniblocks \
             ORDER BY number DESC \
             LIMIT 1",
@@ -493,10 +475,7 @@ impl BlocksDal<'_, '_> {
     ) -> sqlx::Result<Option<MiniblockHeader>> {
         Ok(sqlx::query_as!(
             StorageMiniblockHeader,
-            "SELECT number, timestamp, hash, l1_tx_count, l2_tx_count, \
-                base_fee_per_gas, l1_gas_price, l2_fair_gas_price, \
-                bootloader_code_hash, default_aa_code_hash, protocol_version, \
-                virtual_blocks
+            "SELECT number, timestamp, hash, l1_tx_count, l2_tx_count, virtual_blocks \
             FROM miniblocks \
             WHERE number = $1",
             miniblock_number.0 as i64,
@@ -1458,7 +1437,10 @@ impl BlocksDal<'_, '_> {
         miniblock_number: MiniblockNumber,
     ) -> anyhow::Result<Option<ProtocolVersionId>> {
         let Some(row) = sqlx::query!(
-            "SELECT protocol_version FROM miniblocks WHERE number = $1",
+            "SELECT protocol_version \
+            FROM miniblocks \
+            INNER JOIN l1_batch_init_params ON l1_batch_init_params.number = miniblocks.l1_batch_number \
+            WHERE miniblocks.number = $1",
             miniblock_number.0 as i64
         )
         .fetch_optional(self.storage.conn())
@@ -1483,20 +1465,6 @@ impl BlocksDal<'_, '_> {
         .fetch_optional(self.storage.conn())
         .await?
         .map(|row| row.timestamp as u64))
-    }
-
-    pub async fn set_protocol_version_for_pending_miniblocks(
-        &mut self,
-        id: ProtocolVersionId,
-    ) -> sqlx::Result<()> {
-        sqlx::query!(
-            "UPDATE miniblocks SET protocol_version = $1 \
-            WHERE l1_batch_number IS NULL",
-            id as i32,
-        )
-        .execute(self.storage.conn())
-        .await?;
-        Ok(())
     }
 
     pub async fn get_virtual_blocks_for_miniblock(

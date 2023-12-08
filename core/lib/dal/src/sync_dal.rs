@@ -25,21 +25,22 @@ impl SyncDal<'_, '_> {
         let storage_block_details = sqlx::query_as!(
             StorageSyncBlock,
             "SELECT miniblocks.number, \
-                COALESCE(miniblocks.l1_batch_number, (SELECT (max(number) + 1) FROM l1_batches)) as \"l1_batch_number!\", \
+                COALESCE(miniblocks.l1_batch_number, (SELECT (MAX(number) + 1) FROM l1_batches)) AS \"l1_batch_number!\", \
                 (SELECT max(m2.number) FROM miniblocks m2 WHERE miniblocks.l1_batch_number = m2.l1_batch_number) as \"last_batch_miniblock?\", \
                 miniblocks.timestamp, \
                 miniblocks.hash as \"root_hash?\", \
-                miniblocks.l1_gas_price, \
-                miniblocks.l2_fair_gas_price, \
-                miniblocks.bootloader_code_hash, \
-                miniblocks.default_aa_code_hash, \
+                l1_batch_init_params.l1_gas_price, \
+                l1_batch_init_params.l2_fair_gas_price, \
+                l1_batch_init_params.bootloader_code_hash, \
+                l1_batch_init_params.default_aa_code_hash, \
                 miniblocks.virtual_blocks, \
                 miniblocks.hash, \
                 miniblocks.consensus, \
-                miniblocks.protocol_version as \"protocol_version!\", \
+                l1_batch_init_params.protocol_version as \"protocol_version!\", \
                 l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
             FROM miniblocks \
-            LEFT JOIN l1_batch_init_params ON miniblocks.l1_batch_number = l1_batch_init_params.number \
+            INNER JOIN l1_batch_init_params ON \
+                l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT (MAX(number) + 1) FROM l1_batches)) \
             WHERE miniblocks.number = $1",
             block_number.0 as i64
         )

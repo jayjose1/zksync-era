@@ -396,9 +396,11 @@ impl BlocksWeb3Dal<'_, '_> {
         block_count: u64,
     ) -> sqlx::Result<Vec<U256>> {
         let result: Vec<_> = sqlx::query!(
-            "SELECT base_fee_per_gas FROM miniblocks \
-            WHERE number <= $1 \
-            ORDER BY number DESC LIMIT $2",
+            "SELECT base_fee_per_gas \
+            FROM miniblocks \
+            INNER JOIN l1_batch_init_params ON l1_batch_init_params.number = miniblocks.l1_batch_number \
+            WHERE miniblocks.number <= $1 \
+            ORDER BY miniblocks.number DESC LIMIT $2",
             newest_block.0 as i64,
             block_count as i64
         )
@@ -431,11 +433,11 @@ impl BlocksWeb3Dal<'_, '_> {
                 prove_tx.confirmed_at AS \"proven_at?\", \
                 execute_tx.tx_hash AS \"execute_tx_hash?\", \
                 execute_tx.confirmed_at AS \"executed_at?\", \
-                miniblocks.l1_gas_price, \
-                miniblocks.l2_fair_gas_price, \
-                miniblocks.bootloader_code_hash, \
-                miniblocks.default_aa_code_hash, \
-                miniblocks.protocol_version, \
+                l1_batch_init_params.l1_gas_price, \
+                l1_batch_init_params.l2_fair_gas_price, \
+                l1_batch_init_params.bootloader_code_hash, \
+                l1_batch_init_params.default_aa_code_hash, \
+                l1_batch_init_params.protocol_version, \
                 l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
             FROM miniblocks \
             LEFT JOIN l1_batch_init_params ON miniblocks.l1_batch_number = l1_batch_init_params.number \
@@ -583,10 +585,9 @@ impl BlocksWeb3Dal<'_, '_> {
 
 #[cfg(test)]
 mod tests {
-    use zksync_contracts::BaseSystemContractsHashes;
     use zksync_types::{
         block::{miniblock_hash, MiniblockHeader},
-        MiniblockNumber, ProtocolVersion, ProtocolVersionId,
+        MiniblockNumber, ProtocolVersion,
     };
 
     use super::*;
@@ -778,11 +779,6 @@ mod tests {
             hash: miniblock_hash(MiniblockNumber(0), 0, H256::zero(), H256::zero()),
             l1_tx_count: 0,
             l2_tx_count: 0,
-            base_fee_per_gas: 100,
-            l1_gas_price: 100,
-            l2_fair_gas_price: 100,
-            base_system_contracts_hashes: BaseSystemContractsHashes::default(),
-            protocol_version: Some(ProtocolVersionId::default()),
             virtual_blocks: 0,
         };
         conn.blocks_dal().insert_miniblock(&header).await.unwrap();

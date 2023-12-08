@@ -118,14 +118,7 @@ impl Tester {
         }
     }
 
-    pub(super) async fn insert_miniblock(
-        &self,
-        pool: &ConnectionPool,
-        number: u32,
-        base_fee_per_gas: u64,
-        l1_gas_price: u64,
-        l2_fair_gas_price: u64,
-    ) {
+    pub(super) async fn insert_miniblock(&self, pool: &ConnectionPool, number: u32) {
         let mut storage = pool.access_storage_tagged("state_keeper").await.unwrap();
         storage
             .blocks_dal()
@@ -135,11 +128,6 @@ impl Tester {
                 hash: H256::default(),
                 l1_tx_count: 0,
                 l2_tx_count: 0,
-                base_fee_per_gas,
-                l1_gas_price,
-                l2_fair_gas_price,
-                base_system_contracts_hashes: self.base_system_contracts.hashes(),
-                protocol_version: Some(ProtocolVersionId::latest()),
                 virtual_blocks: 0,
             })
             .await

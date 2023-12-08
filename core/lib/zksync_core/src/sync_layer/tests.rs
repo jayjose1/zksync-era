@@ -253,6 +253,8 @@ async fn external_io_basics() {
         .wait(|state| state.get_local_block() == MiniblockNumber(1))
         .await;
 
+    // FIXME: also check l1 batch init params
+
     // Check that the miniblock is persisted.
     let mut storage = pool.access_storage().await.unwrap();
     let miniblock = storage
@@ -262,8 +264,6 @@ async fn external_io_basics() {
         .unwrap()
         .expect("Miniblock #1 is not persisted");
     assert_eq!(miniblock.timestamp, 1);
-    assert_eq!(miniblock.l1_gas_price, 2);
-    assert_eq!(miniblock.l2_fair_gas_price, 3);
     assert_eq!(miniblock.l1_tx_count, 0);
     assert_eq!(miniblock.l2_tx_count, 1);
 

@@ -48,9 +48,7 @@ async fn test_filter_with_pending_batch() {
     // Insert a sealed batch so there will be a prev_l1_batch_state_root.
     // These gas values are random and don't matter for filter calculation as there will be a
     // pending batch the filter will be based off of.
-    tester
-        .insert_miniblock(&connection_pool, 1, 5, 55, 555)
-        .await;
+    tester.insert_miniblock(&connection_pool, 1).await;
     tester.insert_sealed_batch(&connection_pool, 1).await;
 
     tester.set_timestamp(1);
@@ -66,15 +64,7 @@ async fn test_filter_with_pending_batch() {
             give_fair_l2_gas_price,
         )
         .await;
-    tester
-        .insert_miniblock(
-            &connection_pool,
-            2,
-            10,
-            give_l1_gas_price,
-            give_fair_l2_gas_price,
-        )
-        .await;
+    tester.insert_miniblock(&connection_pool, 2).await;
 
     let (mut mempool, _) = tester.create_test_mempool_io(connection_pool, 1).await;
     // Before the mempool knows there is a pending batch, the filter is still set to the default values.
@@ -100,9 +90,7 @@ async fn test_filter_with_no_pending_batch() {
 
     // Insert a sealed batch so there will be a prev_l1_batch_state_root.
     // These gas values are random and don't matter for filter calculation.
-    tester
-        .insert_miniblock(&connection_pool, 1, 5, 55, 555)
-        .await;
+    tester.insert_miniblock(&connection_pool, 1).await;
     tester.insert_sealed_batch(&connection_pool, 1).await;
 
     // Create a copy of the tx filter that the mempool will use.
@@ -136,9 +124,7 @@ async fn test_timestamps_are_distinct(
     tester.genesis(&connection_pool).await;
 
     tester.set_timestamp(prev_miniblock_timestamp);
-    tester
-        .insert_miniblock(&connection_pool, 1, 5, 55, 555)
-        .await;
+    tester.insert_miniblock(&connection_pool, 1).await;
     if delay_prev_miniblock_compared_to_batch {
         tester.set_timestamp(prev_miniblock_timestamp - 1);
     }
@@ -240,11 +226,7 @@ async fn processing_storage_logs_when_sealing_miniblock() {
         miniblock_number: MiniblockNumber(3),
         miniblock,
         first_tx_index: 0,
-        l1_gas_price: 100,
-        fair_l2_gas_price: 100,
         base_fee_per_gas: 10,
-        base_system_contracts_hashes: BaseSystemContractsHashes::default(),
-        protocol_version: Some(ProtocolVersionId::latest()),
         l2_erc20_bridge_addr: Address::default(),
         consensus: None,
         pre_insert_txs: false,
@@ -318,11 +300,7 @@ async fn processing_events_when_sealing_miniblock() {
         miniblock_number,
         miniblock,
         first_tx_index: 0,
-        l1_gas_price: 100,
-        fair_l2_gas_price: 100,
         base_fee_per_gas: 10,
-        base_system_contracts_hashes: BaseSystemContractsHashes::default(),
-        protocol_version: Some(ProtocolVersionId::latest()),
         l2_erc20_bridge_addr: Address::default(),
         consensus: None,
         pre_insert_txs: false,

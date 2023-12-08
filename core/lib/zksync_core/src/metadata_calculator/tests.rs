@@ -523,11 +523,6 @@ pub(super) async fn extend_db_state(
             ),
             l1_tx_count: 0,
             l2_tx_count: 0,
-            base_fee_per_gas: init_params.base_fee_per_gas,
-            l1_gas_price: 0,
-            l2_fair_gas_price: 0,
-            base_system_contracts_hashes: base_system_contracts.hashes(),
-            protocol_version: Some(Default::default()),
             virtual_blocks: 0,
         };
 

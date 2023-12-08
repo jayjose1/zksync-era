@@ -27,7 +27,7 @@ use crate::{
     state_keeper::{
         extractors,
         io::{
-            common::{l1_batch_params, load_pending_batch, poll_iters},
+            common::{l1_batch_params, load_pending_batch, poll_iters, save_l1_batch_init_params},
             MiniblockParams, MiniblockSealerHandle, PendingBatchData, StateKeeperIO,
         },
         mempool_actor::l2_tx_filter,
@@ -106,7 +106,6 @@ where
         } = load_pending_batch(
             &mut storage,
             self.current_l1_batch_number,
-            self.fee_account,
             self.validation_computational_gas_limit,
             self.chain_id,
         )
@@ -147,51 +146,7 @@ where
                 tokio::time::sleep(self.delay_interval).await;
                 continue;
             }
-
-            let prev_l1_batch_hash = self.load_previous_l1_batch_hash().await;
-
-            let MiniblockHeader {
-                timestamp: prev_miniblock_timestamp,
-                hash: prev_miniblock_hash,
-                ..
-            } = self.load_previous_miniblock_header().await;
-
-            // We cannot create two L1 batches or miniblocks with the same timestamp (forbidden by the bootloader).
-            // Hence, we wait until the current timestamp is larger than the timestamp of the previous miniblock.
-            // We can use `timeout_at` since `sleep_past` is cancel-safe; it only uses `sleep()` async calls.
-            let current_timestamp = tokio::time::timeout_at(
-                deadline.into(),
-                sleep_past(prev_miniblock_timestamp, self.current_miniblock_number),
-            );
-            let current_timestamp = current_timestamp.await.ok()?;
-
-            tracing::info!(
-                "(l1_gas_price, fair_l2_gas_price) for L1 batch #{} is ({}, {})",
-                self.current_l1_batch_number.0,
-                self.filter.l1_gas_price,
-                self.fair_l2_gas_price
-            );
-            let mut storage = self.pool.access_storage().await.unwrap();
-            let (base_system_contracts, protocol_version) = storage
-                .protocol_versions_dal()
-                .base_system_contracts_by_timestamp(current_timestamp)
-                .await;
-
-            return Some(l1_batch_params(
-                self.current_l1_batch_number,
-                self.fee_account,
-                current_timestamp,
-                prev_l1_batch_hash,
-                self.filter.l1_gas_price,
-                self.fair_l2_gas_price,
-                self.current_miniblock_number,
-                prev_miniblock_hash,
-                base_system_contracts,
-                self.validation_computational_gas_limit,
-                protocol_version,
-                self.get_virtual_blocks_count(true, self.current_miniblock_number.0),
-                self.chain_id,
-            ));
+            return self.load_l1_batch_params_unchecked(deadline).await;
         }
         None
     }
@@ -512,6 +467,57 @@ impl<G: L1GasPriceProvider> MempoolIO<G> {
             return self.virtual_blocks_per_miniblock;
         }
         0
+    }
+
+    async fn load_l1_batch_params_unchecked(
+        &self,
+        deadline: Instant,
+    ) -> Option<(SystemEnv, L1BatchEnv)> {
+        let prev_l1_batch_hash = self.load_previous_l1_batch_hash().await;
+        let MiniblockHeader {
+            timestamp: prev_miniblock_timestamp,
+            hash: prev_miniblock_hash,
+            ..
+        } = self.load_previous_miniblock_header().await;
+
+        // We cannot create two L1 batches or miniblocks with the same timestamp (forbidden by the bootloader).
+        // Hence, we wait until the current timestamp is larger than the timestamp of the previous miniblock.
+        // We can use `timeout_at` since `sleep_past` is cancel-safe; it only uses `sleep()` async calls.
+        let current_timestamp = tokio::time::timeout_at(
+            deadline.into(),
+            sleep_past(prev_miniblock_timestamp, self.current_miniblock_number),
+        );
+        let current_timestamp = current_timestamp.await.ok()?;
+
+        tracing::info!(
+            "(l1_gas_price, fair_l2_gas_price) for L1 batch #{} is ({}, {})",
+            self.current_l1_batch_number.0,
+            self.filter.l1_gas_price,
+            self.fair_l2_gas_price
+        );
+        let mut storage = self.pool.access_storage().await.unwrap();
+        let (base_system_contracts, protocol_version) = storage
+            .protocol_versions_dal()
+            .base_system_contracts_by_timestamp(current_timestamp)
+            .await;
+
+        let (system_env, l1_batch_env) = l1_batch_params(
+            self.current_l1_batch_number,
+            self.fee_account,
+            current_timestamp,
+            prev_l1_batch_hash,
+            self.filter.l1_gas_price,
+            self.fair_l2_gas_price,
+            self.current_miniblock_number,
+            prev_miniblock_hash,
+            base_system_contracts,
+            self.validation_computational_gas_limit,
+            protocol_version,
+            self.get_virtual_blocks_count(true, self.current_miniblock_number.0),
+            self.chain_id,
+        );
+        save_l1_batch_init_params(&mut storage, &system_env, &l1_batch_env).await;
+        Some((system_env, l1_batch_env))
     }
 }
 

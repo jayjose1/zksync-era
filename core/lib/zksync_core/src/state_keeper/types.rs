@@ -19,7 +19,7 @@ impl MempoolGuard {
         Self(Arc::new(Mutex::new(store)))
     }
 
-    pub fn insert(&mut self, transactions: Vec<Transaction>, nonces: HashMap<Address, Nonce>) {
+    pub fn insert(&self, transactions: Vec<Transaction>, nonces: HashMap<Address, Nonce>) {
         self.0
             .lock()
             .expect("failed to acquire mempool lock")
@@ -33,21 +33,21 @@ impl MempoolGuard {
             .has_next(filter)
     }
 
-    pub fn next_transaction(&mut self, filter: &L2TxFilter) -> Option<Transaction> {
+    pub fn next_transaction(&self, filter: &L2TxFilter) -> Option<Transaction> {
         self.0
             .lock()
             .expect("failed to acquire mempool lock")
             .next_transaction(filter)
     }
 
-    pub fn rollback(&mut self, rejected: &Transaction) {
+    pub fn rollback(&self, rejected: &Transaction) {
         self.0
             .lock()
             .expect("failed to acquire mempool lock")
             .rollback(rejected);
     }
 
-    pub fn get_mempool_info(&mut self) -> MempoolInfo {
+    pub fn get_mempool_info(&self) -> MempoolInfo {
         self.0
             .lock()
             .expect("failed to acquire mempool lock")

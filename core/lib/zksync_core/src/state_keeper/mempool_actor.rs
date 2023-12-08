@@ -50,7 +50,7 @@ impl<G: L1GasPriceProvider> MempoolFetcher<G> {
     }
 
     pub async fn run(
-        mut self,
+        self,
         pool: ConnectionPool,
         remove_stuck_txs: bool,
         stuck_tx_timeout: Duration,

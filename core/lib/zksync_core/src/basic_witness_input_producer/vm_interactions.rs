@@ -35,16 +35,6 @@ pub(super) fn create_vm(
             )
         })?;
 
-    let fee_account_addr = rt_handle
-        .block_on(
-            connection
-                .blocks_dal()
-                .get_fee_address_for_l1_batch(l1_batch_number),
-        )?
-        .with_context(|| {
-            format!("l1_batch_number {l1_batch_number:?} must have fee_address_account")
-        })?;
-
     // In the state keeper, this value is used to reject execution.
     // All batches ran by BasicWitnessInputProducer have already been executed by State Keeper.
     // This means we don't want to reject any execution, therefore we're using MAX as an allow all.
@@ -53,7 +43,6 @@ pub(super) fn create_vm(
         .block_on(load_l1_batch_params(
             &mut connection,
             l1_batch_number,
-            fee_account_addr,
             validation_computational_gas_limit,
             l2_chain_id,
         ))

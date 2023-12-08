@@ -11,7 +11,7 @@ use multivm::interface::{FinishedL1Batch, L1BatchEnv};
 use zksync_dal::{blocks_dal::ConsensusBlockFields, StorageProcessor};
 use zksync_system_constants::ACCOUNT_CODE_STORAGE_ADDRESS;
 use zksync_types::{
-    block::{unpack_block_info, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
+    block::{unpack_block_info, L1BatchResult, MiniblockHeader},
     event::{extract_added_tokens, extract_long_l2_to_l1_messages},
     l1::L1Tx,
     l2::L2Tx,
@@ -33,7 +33,6 @@ use zksync_utils::{h256_to_u256, time::millis_since_epoch, u256_to_h256};
 use crate::{
     metrics::{BlockStage, MiniblockStage, APP_METRICS},
     state_keeper::{
-        extractors,
         metrics::{L1BatchSealStage, MiniblockSealStage, L1_BATCH_METRICS, MINIBLOCK_METRICS},
         updates::{MiniblockSealCommand, UpdatesManager},
     },
@@ -102,37 +101,8 @@ impl UpdatesManager {
         );
 
         let progress = L1_BATCH_METRICS.start(L1BatchSealStage::InsertL1BatchHeader);
-        let (_prev_hash, prev_timestamp) =
-            extractors::wait_for_prev_l1_batch_params(&mut transaction, l1_batch_env.number).await;
-        assert!(
-            prev_timestamp < l1_batch_env.timestamp,
-            "Cannot seal L1 batch #{}: Timestamp of previous L1 batch ({}) >= provisional L1 batch timestamp ({}), \
-             meaning that L1 batch will be rejected by the bootloader",
-            l1_batch_env.number,
-            extractors::display_timestamp(prev_timestamp),
-            extractors::display_timestamp(l1_batch_env.timestamp)
-        );
-
         let l2_to_l1_messages =
             extract_long_l2_to_l1_messages(&finished_batch.final_execution_state.events);
-
-        // FIXME: move to when params are obtained?
-        let initial_params = L1BatchInitialParams {
-            number: l1_batch_env.number,
-            timestamp: l1_batch_env.timestamp,
-            fee_account_address: l1_batch_env.fee_account,
-            base_fee_per_gas: l1_batch_env.base_fee(),
-            l1_gas_price: self.l1_gas_price(),
-            l2_fair_gas_price: self.fair_l2_gas_price(),
-            base_system_contracts_hashes: self.base_system_contract_hashes(),
-            protocol_version: Some(self.protocol_version()),
-        };
-        transaction
-            .blocks_dal()
-            .insert_l1_batch_initial_params(&initial_params)
-            .await
-            .unwrap();
-
         let l1_batch = L1BatchResult {
             priority_ops_onchain_data: self.l1_batch.priority_ops_onchain_data.clone(),
             l1_tx_count: l1_tx_count as u16,
@@ -150,7 +120,7 @@ impl UpdatesManager {
         transaction
             .blocks_dal()
             .insert_l1_batch(
-                initial_params.number,
+                l1_batch_env.number,
                 &l1_batch,
                 finished_batch.final_bootloader_memory.as_ref().unwrap(),
                 self.l1_batch.l1_gas_count,

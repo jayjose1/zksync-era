@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use futures::FutureExt;
 use multivm::vm_latest::utils::fee::derive_base_fee_and_gas_per_pubdata;
@@ -17,7 +17,7 @@ use crate::state_keeper::{
     mempool_actor::l2_tx_filter,
     tests::{
         create_execution_result, create_l1_batch_metadata, create_transaction,
-        create_updates_manager, default_l1_batch_env, default_vm_block_result, Query,
+        create_updates_manager, default_vm_block_result, Query,
     },
     updates::{MiniblockSealCommand, MiniblockUpdates, UpdatesManager},
 };
@@ -42,8 +42,7 @@ async fn test_filter_initialization() {
 #[tokio::test]
 async fn test_filter_with_pending_batch() {
     let connection_pool = ConnectionPool::test_pool().await;
-    let tester = Tester::new();
-
+    let mut tester = Tester::new();
     tester.genesis(&connection_pool).await;
 
     // Insert a sealed batch so there will be a prev_l1_batch_state_root.
@@ -54,9 +53,19 @@ async fn test_filter_with_pending_batch() {
         .await;
     tester.insert_sealed_batch(&connection_pool, 1).await;
 
+    tester.set_timestamp(1);
+    let (give_l1_gas_price, give_fair_l2_gas_price) = (100, 1000);
     // Inserting a pending miniblock that isn't included in a sealed batch means there is a pending batch.
     // The gas values are randomly chosen but so affect filter values calculation.
-    let (give_l1_gas_price, give_fair_l2_gas_price) = (100, 1000);
+    tester
+        .insert_pending_batch_params(
+            &connection_pool,
+            2,
+            10,
+            give_l1_gas_price,
+            give_fair_l2_gas_price,
+        )
+        .await;
     tester
         .insert_miniblock(
             &connection_pool,
@@ -103,15 +112,11 @@ async fn test_filter_with_no_pending_batch() {
     );
 
     // Create a mempool without pending batch and ensure that filter is not initialized just yet.
-    let (mut mempool, mut guard) = tester.create_test_mempool_io(connection_pool, 1).await;
+    let (mut mempool, guard) = tester.create_test_mempool_io(connection_pool, 1).await;
     assert_eq!(mempool.filter(), &L2TxFilter::default());
 
     // Insert a transaction that matches the expected filter.
-    tester.insert_tx(
-        &mut guard,
-        want_filter.fee_per_gas,
-        want_filter.gas_per_pubdata,
-    );
+    tester.insert_tx(&guard, want_filter.fee_per_gas, want_filter.gas_per_pubdata);
 
     // Now, given that there is a transaction matching the expected filter, waiting for the new batch params
     // should succeed and initialize the filter.
@@ -139,13 +144,13 @@ async fn test_timestamps_are_distinct(
     }
     tester.insert_sealed_batch(&connection_pool, 1).await;
 
-    let (mut mempool, mut guard) = tester.create_test_mempool_io(connection_pool, 1).await;
+    let (mut mempool, guard) = tester.create_test_mempool_io(connection_pool, 1).await;
     // Insert a transaction to trigger L1 batch creation.
     let tx_filter = l2_tx_filter(
         &tester.create_gas_adjuster().await,
         tester.fair_l2_gas_price(),
     );
-    tester.insert_tx(&mut guard, tx_filter.fee_per_gas, tx_filter.gas_per_pubdata);
+    tester.insert_tx(&guard, tx_filter.fee_per_gas, tx_filter.gas_per_pubdata);
 
     let batch_params = mempool
         .wait_for_new_batch_params(Duration::from_secs(10))
@@ -358,18 +363,24 @@ async fn test_miniblock_and_l1_batch_processing(
         .unwrap();
     drop(conn);
 
-    let (mut mempool, _) = tester
+    let (mut mempool, guard) = tester
         .create_test_mempool_io(pool.clone(), miniblock_sealer_capacity)
         .await;
+    let tx = create_transaction(100, 10);
+    guard.insert(vec![tx.clone()], HashMap::default());
 
-    let l1_batch_env = default_l1_batch_env(0, 1, Address::random());
+    let (_, l1_batch_env) = mempool
+        .wait_for_new_batch_params(Duration::from_secs(10))
+        .await
+        .unwrap();
+    assert_eq!(l1_batch_env.number, L1BatchNumber(1));
+
     let mut updates = UpdatesManager::new(
-        l1_batch_env,
+        l1_batch_env.clone(),
         BaseSystemContractsHashes::default(),
         ProtocolVersionId::latest(),
     );
 
-    let tx = create_transaction(10, 100);
     updates.extend_from_executed_transaction(
         tx,
         create_execution_result(0, []),
@@ -385,8 +396,6 @@ async fn test_miniblock_and_l1_batch_processing(
     });
 
     let finished_batch = default_vm_block_result();
-
-    let l1_batch_env = default_l1_batch_env(1, 1, Address::random());
     mempool
         .seal_l1_batch(None, updates, &l1_batch_env, finished_batch)
         .await

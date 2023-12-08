@@ -21,7 +21,7 @@ use crate::{
     state_keeper::{
         extractors,
         io::{
-            common::{l1_batch_params, load_pending_batch, poll_iters},
+            common::{l1_batch_params, load_pending_batch, poll_iters, save_l1_batch_init_params},
             MiniblockParams, MiniblockSealerHandle, PendingBatchData, StateKeeperIO,
         },
         metrics::KEEPER_METRICS,
@@ -244,20 +244,6 @@ impl StateKeeperIO for ExternalIO {
     async fn load_pending_batch(&mut self) -> Option<PendingBatchData> {
         let mut storage = self.pool.access_storage_tagged("sync_layer").await.unwrap();
 
-        // TODO (BFT-99): Do not assume that fee account is the same as in previous batch.
-        let fee_account = storage
-            .blocks_dal()
-            .get_l1_batch_header(self.current_l1_batch_number - 1)
-            .await
-            .unwrap()
-            .unwrap_or_else(|| {
-                panic!(
-                    "No block header for batch {}",
-                    self.current_l1_batch_number - 1
-                )
-            })
-            .params
-            .fee_account_address;
         let pending_miniblock_number = {
             let (_, last_miniblock_number_included_in_l1_batch) = storage
                 .blocks_dal()
@@ -295,7 +281,6 @@ impl StateKeeperIO for ExternalIO {
         load_pending_batch(
             &mut storage,
             self.current_l1_batch_number,
-            fee_account,
             self.validation_computational_gas_limit,
             self.chain_id,
         )
@@ -335,7 +320,7 @@ impl StateKeeperIO for ExternalIO {
                     let base_system_contracts = self
                         .load_base_system_contracts_by_version_id(protocol_version)
                         .await;
-                    return Some(l1_batch_params(
+                    let (system_env, l1_batch_env) = l1_batch_params(
                         number,
                         operator_address,
                         timestamp,
@@ -349,7 +334,11 @@ impl StateKeeperIO for ExternalIO {
                         protocol_version,
                         virtual_blocks,
                         self.chain_id,
-                    ));
+                    );
+
+                    let mut storage = self.pool.access_storage_tagged("sync_layer").await.unwrap();
+                    save_l1_batch_init_params(&mut storage, &system_env, &l1_batch_env).await;
+                    return Some((system_env, l1_batch_env));
                 }
                 Some(other) => {
                     panic!("Unexpected action in the action queue: {:?}", other);

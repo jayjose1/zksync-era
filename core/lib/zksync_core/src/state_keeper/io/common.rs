@@ -7,8 +7,8 @@ use multivm::{
 use zksync_contracts::BaseSystemContracts;
 use zksync_dal::StorageProcessor;
 use zksync_types::{
-    Address, L1BatchNumber, L2ChainId, MiniblockNumber, ProtocolVersionId, H256, U256,
-    ZKPORTER_IS_AVAILABLE,
+    block::L1BatchInitialParams, Address, L1BatchNumber, L2ChainId, MiniblockNumber,
+    ProtocolVersionId, H256, U256, ZKPORTER_IS_AVAILABLE,
 };
 use zksync_utils::u256_to_h256;
 
@@ -72,30 +72,40 @@ pub(crate) fn poll_iters(delay_interval: Duration, max_wait: Duration) -> usize 
 pub(crate) async fn load_l1_batch_params(
     storage: &mut StorageProcessor<'_>,
     current_l1_batch_number: L1BatchNumber,
-    fee_account: Address,
     validation_computational_gas_limit: u32,
     chain_id: L2ChainId,
 ) -> Option<(SystemEnv, L1BatchEnv)> {
+    let init_params = storage
+        .blocks_dal()
+        .get_l1_batch_initial_params(current_l1_batch_number)
+        .await
+        .unwrap()?;
+
+    let (_, last_miniblock_number_in_prev_batch) = storage
+        .blocks_dal()
+        .get_miniblock_range_of_l1_batch(current_l1_batch_number - 1)
+        .await
+        .unwrap()
+        .unwrap();
+    let pending_miniblock_number = last_miniblock_number_in_prev_batch + 1;
     // If miniblock doesn't exist (for instance if it's pending), it means that there is no unsynced state (i.e. no transactions
     // were executed after the last sealed batch).
-    let pending_miniblock_number = {
-        let (_, last_miniblock_number_included_in_l1_batch) = storage
-            .blocks_dal()
-            .get_miniblock_range_of_l1_batch(current_l1_batch_number - 1)
-            .await
-            .unwrap()
-            .unwrap();
-        last_miniblock_number_included_in_l1_batch + 1
-    };
-    let pending_miniblock_header = storage
+    let virtual_blocks = storage
         .blocks_dal()
-        .get_miniblock_header(pending_miniblock_number)
+        .get_virtual_blocks_for_miniblock(pending_miniblock_number)
         .await
         .unwrap()?;
 
     tracing::info!("Getting previous batch hash");
-    let (previous_l1_batch_hash, _) =
+    let (previous_l1_batch_hash, prev_l1_batch_timestamp) =
         extractors::wait_for_prev_l1_batch_params(storage, current_l1_batch_number).await;
+    assert!(
+        prev_l1_batch_timestamp < init_params.timestamp,
+        "Cannot seal L1 batch #{current_l1_batch_number}: Timestamp of previous L1 batch ({}) >= provisional L1 batch timestamp ({}), \
+         meaning that L1 batch will be rejected by the bootloader",
+        extractors::display_timestamp(prev_l1_batch_timestamp),
+        extractors::display_timestamp(init_params.timestamp)
+    );
 
     tracing::info!("Getting previous miniblock hash");
     let prev_miniblock_hash = storage
@@ -109,47 +119,41 @@ pub(crate) async fn load_l1_batch_params(
     let base_system_contracts = storage
         .storage_dal()
         .get_base_system_contracts(
-            pending_miniblock_header
-                .base_system_contracts_hashes
-                .bootloader,
-            pending_miniblock_header
-                .base_system_contracts_hashes
-                .default_aa,
+            init_params.base_system_contracts_hashes.bootloader,
+            init_params.base_system_contracts_hashes.default_aa,
         )
         .await;
 
     tracing::info!("Previous l1_batch_hash: {}", previous_l1_batch_hash);
     Some(l1_batch_params(
         current_l1_batch_number,
-        fee_account,
-        pending_miniblock_header.timestamp,
+        init_params.fee_account_address,
+        init_params.timestamp,
         previous_l1_batch_hash,
-        pending_miniblock_header.l1_gas_price,
-        pending_miniblock_header.l2_fair_gas_price,
+        init_params.l1_gas_price,
+        init_params.l2_fair_gas_price,
         pending_miniblock_number,
         prev_miniblock_hash,
         base_system_contracts,
         validation_computational_gas_limit,
-        pending_miniblock_header
+        init_params
             .protocol_version
             .expect("`protocol_version` must be set for pending miniblock"),
-        pending_miniblock_header.virtual_blocks,
+        virtual_blocks,
         chain_id,
     ))
 }
 
-/// Loads the pending L1 block data from the database.
+/// Loads the pending L1 batch data from the database.
 pub(crate) async fn load_pending_batch(
     storage: &mut StorageProcessor<'_>,
     current_l1_batch_number: L1BatchNumber,
-    fee_account: Address,
     validation_computational_gas_limit: u32,
     chain_id: L2ChainId,
 ) -> Option<PendingBatchData> {
     let (system_env, l1_batch_env) = load_l1_batch_params(
         storage,
         current_l1_batch_number,
-        fee_account,
         validation_computational_gas_limit,
         chain_id,
     )
@@ -160,12 +164,33 @@ pub(crate) async fn load_pending_batch(
         .get_miniblocks_to_reexecute()
         .await
         .unwrap();
-
     Some(PendingBatchData {
         l1_batch_env,
         system_env,
         pending_miniblocks,
     })
+}
+
+pub(crate) async fn save_l1_batch_init_params(
+    storage: &mut StorageProcessor<'_>,
+    system_env: &SystemEnv,
+    l1_batch_env: &L1BatchEnv,
+) {
+    let params = L1BatchInitialParams {
+        number: l1_batch_env.number,
+        timestamp: l1_batch_env.timestamp,
+        fee_account_address: l1_batch_env.fee_account,
+        base_fee_per_gas: l1_batch_env.base_fee(),
+        l1_gas_price: l1_batch_env.l1_gas_price,
+        l2_fair_gas_price: l1_batch_env.fair_l2_gas_price,
+        base_system_contracts_hashes: system_env.base_system_smart_contracts.hashes(),
+        protocol_version: Some(system_env.version),
+    };
+    storage
+        .blocks_dal()
+        .insert_l1_batch_initial_params(&params)
+        .await
+        .unwrap();
 }
 
 #[cfg(test)]

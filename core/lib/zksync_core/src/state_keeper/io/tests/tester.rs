@@ -146,25 +146,42 @@ impl Tester {
             .unwrap();
     }
 
-    pub(super) async fn insert_sealed_batch(&self, pool: &ConnectionPool, number: u32) {
-        let params = L1BatchInitialParams::new(
+    pub(super) async fn insert_pending_batch_params(
+        &self,
+        pool: &ConnectionPool,
+        number: u32,
+        base_fee_per_gas: u64,
+        l1_gas_price: u64,
+        l2_fair_gas_price: u64,
+    ) {
+        let mut params = L1BatchInitialParams::new(
             L1BatchNumber(number),
             self.current_timestamp,
             Address::default(),
             self.base_system_contracts.hashes(),
             Default::default(),
         );
+        params.base_fee_per_gas = base_fee_per_gas;
+        params.l1_gas_price = l1_gas_price;
+        params.l2_fair_gas_price = l2_fair_gas_price;
 
-        let mut storage = pool.access_storage_tagged("state_keeper").await.unwrap();
+        let mut storage = pool.access_storage().await.unwrap();
         storage
             .blocks_dal()
             .insert_l1_batch_initial_params(&params)
             .await
             .unwrap();
+    }
+
+    pub(super) async fn insert_sealed_batch(&self, pool: &ConnectionPool, number: u32) {
+        self.insert_pending_batch_params(pool, number, 0, 0, 0)
+            .await;
+
+        let mut storage = pool.access_storage().await.unwrap();
         storage
             .blocks_dal()
             .insert_l1_batch(
-                params.number,
+                L1BatchNumber(number),
                 &L1BatchResult::default(),
                 &[],
                 Default::default(),
@@ -175,22 +192,17 @@ impl Tester {
             .unwrap();
         storage
             .blocks_dal()
-            .mark_miniblocks_as_executed_in_l1_batch(params.number)
+            .mark_miniblocks_as_executed_in_l1_batch(L1BatchNumber(number))
             .await
             .unwrap();
         storage
             .blocks_dal()
-            .set_l1_batch_hash(params.number, H256::default())
+            .set_l1_batch_hash(L1BatchNumber(number), H256::default())
             .await
             .unwrap();
     }
 
-    pub(super) fn insert_tx(
-        &self,
-        guard: &mut MempoolGuard,
-        fee_per_gas: u64,
-        gas_per_pubdata: u32,
-    ) {
+    pub(super) fn insert_tx(&self, guard: &MempoolGuard, fee_per_gas: u64, gas_per_pubdata: u32) {
         let tx = create_transaction(fee_per_gas, gas_per_pubdata);
         guard.insert(vec![tx], Default::default());
     }

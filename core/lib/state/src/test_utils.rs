@@ -4,7 +4,7 @@ use std::ops;
 
 use zksync_dal::StorageProcessor;
 use zksync_types::{
-    block::{BlockGasCount, L1BatchHeader, MiniblockHeader},
+    block::{BlockGasCount, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     AccountTreeId, Address, L1BatchNumber, MiniblockNumber, ProtocolVersion, StorageKey,
     StorageLog, H256,
 };
@@ -97,16 +97,26 @@ pub(crate) async fn create_l1_batch(
     l1_batch_number: L1BatchNumber,
     logs_for_initial_writes: &[StorageLog],
 ) {
-    let mut header = L1BatchHeader::new(
+    let init_params = L1BatchInitialParams::new(
         l1_batch_number,
         0,
         Address::default(),
         Default::default(),
         Default::default(),
     );
-    header.is_finished = true;
     conn.blocks_dal()
-        .insert_l1_batch(&header, &[], BlockGasCount::default(), &[], &[])
+        .insert_l1_batch_initial_params(&init_params)
+        .await
+        .unwrap();
+    conn.blocks_dal()
+        .insert_l1_batch(
+            l1_batch_number,
+            &L1BatchResult::default(),
+            &[],
+            BlockGasCount::default(),
+            &[],
+            &[],
+        )
         .await
         .unwrap();
     conn.blocks_dal()

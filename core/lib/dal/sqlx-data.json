@@ -7343,6 +7343,18 @@
     },
     "query": "\n                    INSERT INTO prover_jobs_fri (l1_batch_number, circuit_id, circuit_blob_url, aggregation_round, sequence_number, depth, is_node_final_proof, protocol_version, status, created_at, updated_at)\n                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', now(), now())\n                    ON CONFLICT(l1_batch_number, aggregation_round, circuit_id, depth, sequence_number)\n                    DO UPDATE SET updated_at=now()\n                    "
   },
+  "9f50b78a40219328f12fe888074bd0d42fe6c5967acb0f781e04a17df5615a6c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "DELETE FROM l1_batch_init_params WHERE number > $1"
+  },
   "a074cd2c23434a8e801c2c0b42e63f1657765aceabd6d8a50ef2d2299bba99ab": {
     "describe": {
       "columns": [

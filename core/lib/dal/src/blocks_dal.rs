@@ -1199,10 +1199,19 @@ impl BlocksDal<'_, '_> {
         &mut self,
         last_batch_to_keep: Option<L1BatchNumber>,
     ) -> sqlx::Result<()> {
+        let mut db_transaction = self.storage.start_transaction().await?;
         let block_number = last_batch_to_keep.map_or(-1, |number| number.0 as i64);
         sqlx::query!("DELETE FROM l1_batches WHERE number > $1", block_number)
-            .execute(self.storage.conn())
+            .execute(db_transaction.conn())
             .await?;
+        sqlx::query!(
+            "DELETE FROM l1_batch_init_params WHERE number > $1",
+            block_number
+        )
+        .execute(db_transaction.conn())
+        .await?;
+
+        db_transaction.commit().await?;
         Ok(())
     }
 

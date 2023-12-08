@@ -21,6 +21,7 @@ impl SyncDal<'_, '_> {
         include_transactions: bool,
     ) -> anyhow::Result<Option<SyncBlock>> {
         let latency = MethodLatency::new("sync_dal_sync_block");
+        // FIXME: get rid of `COALESCE`
         let storage_block_details = sqlx::query_as!(
             StorageSyncBlock,
             "SELECT miniblocks.number, \
@@ -36,9 +37,9 @@ impl SyncDal<'_, '_> {
                 miniblocks.hash, \
                 miniblocks.consensus, \
                 miniblocks.protocol_version as \"protocol_version!\", \
-                l1_batches.fee_account_address as \"fee_account_address?\" \
+                l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
             FROM miniblocks \
-            LEFT JOIN l1_batches ON miniblocks.l1_batch_number = l1_batches.number \
+            LEFT JOIN l1_batch_init_params ON miniblocks.l1_batch_number = l1_batch_init_params.number \
             WHERE miniblocks.number = $1",
             block_number.0 as i64
         )

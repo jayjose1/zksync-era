@@ -28,9 +28,30 @@ impl DeployedContract {
     }
 }
 
+/// Subset of L1 batch parameters known right when the batch is created.
+#[derive(Debug, Clone, PartialEq)]
+pub struct L1BatchInitialParams {
+    /// Numeric ID of the block. Starts from 1, 0 block is considered genesis block and has no transactions.
+    pub number: L1BatchNumber,
+    /// Timestamp when block was first created.
+    pub timestamp: u64,
+    /// Address of the fee account that was used when block was created
+    pub fee_account_address: Address,
+    /// The EIP1559 base_fee used in this block.
+    pub base_fee_per_gas: u64,
+    /// The assumed L1 gas price within the block.
+    pub l1_gas_price: u64,
+    /// The L2 gas price that the operator agrees on.
+    pub l2_fair_gas_price: u64,
+    pub base_system_contracts_hashes: BaseSystemContractsHashes,
+    /// Version of protocol used for the L1 batch.
+    pub protocol_version: Option<ProtocolVersionId>,
+}
+
 /// Holder for the block metadata that is not available from transactions themselves.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct L1BatchHeader {
+    // FIXME: embed `L1BatchInitialParameters`
     /// Numeric ID of the block. Starts from 1, 0 block is considered genesis block and has no transactions.
     pub number: L1BatchNumber,
     /// Whether block is sealed or not (doesn't correspond to committing/verifying it on the L1).

@@ -416,47 +416,45 @@ impl BlocksWeb3Dal<'_, '_> {
         block_number: MiniblockNumber,
         current_operator_address: Address,
     ) -> sqlx::Result<Option<api::BlockDetails>> {
-        {
-            let storage_block_details = sqlx::query_as!(
-                StorageBlockDetails,
-                r#"
-                    SELECT miniblocks.number,
-                        COALESCE(miniblocks.l1_batch_number, (SELECT (max(number) + 1) FROM l1_batches)) as "l1_batch_number!",
-                        miniblocks.timestamp,
-                        miniblocks.l1_tx_count,
-                        miniblocks.l2_tx_count,
-                        miniblocks.hash as "root_hash?",
-                        commit_tx.tx_hash as "commit_tx_hash?",
-                        commit_tx.confirmed_at as "committed_at?",
-                        prove_tx.tx_hash as "prove_tx_hash?",
-                        prove_tx.confirmed_at as "proven_at?",
-                        execute_tx.tx_hash as "execute_tx_hash?",
-                        execute_tx.confirmed_at as "executed_at?",
-                        miniblocks.l1_gas_price,
-                        miniblocks.l2_fair_gas_price,
-                        miniblocks.bootloader_code_hash,
-                        miniblocks.default_aa_code_hash,
-                        miniblocks.protocol_version,
-                        l1_batches.fee_account_address as "fee_account_address?"
-                    FROM miniblocks
-                    LEFT JOIN l1_batches ON miniblocks.l1_batch_number = l1_batches.number
-                    LEFT JOIN eth_txs_history as commit_tx ON (l1_batches.eth_commit_tx_id = commit_tx.eth_tx_id AND commit_tx.confirmed_at IS NOT NULL)
-                    LEFT JOIN eth_txs_history as prove_tx ON (l1_batches.eth_prove_tx_id = prove_tx.eth_tx_id AND prove_tx.confirmed_at IS NOT NULL)
-                    LEFT JOIN eth_txs_history as execute_tx ON (l1_batches.eth_execute_tx_id = execute_tx.eth_tx_id AND execute_tx.confirmed_at IS NOT NULL)
-                    WHERE miniblocks.number = $1
-                "#,
-                block_number.0 as i64
-            )
-            .instrument("get_block_details")
-            .with_arg("block_number", &block_number)
-            .report_latency()
-            .fetch_optional(self.storage.conn())
-            .await?;
+        // FIXME: get rid of `COALESCE`
+        let storage_block_details = sqlx::query_as!(
+            StorageBlockDetails,
+            "SELECT miniblocks.number, \
+                COALESCE(miniblocks.l1_batch_number, (SELECT (max(number) + 1) FROM l1_batches)) AS \"l1_batch_number!\", \
+                miniblocks.timestamp, \
+                miniblocks.l1_tx_count, \
+                miniblocks.l2_tx_count, \
+                miniblocks.hash AS \"root_hash?\", \
+                commit_tx.tx_hash As \"commit_tx_hash?\", \
+                commit_tx.confirmed_at AS \"committed_at?\", \
+                prove_tx.tx_hash AS \"prove_tx_hash?\",
+                prove_tx.confirmed_at AS \"proven_at?\", \
+                execute_tx.tx_hash AS \"execute_tx_hash?\", \
+                execute_tx.confirmed_at AS \"executed_at?\", \
+                miniblocks.l1_gas_price, \
+                miniblocks.l2_fair_gas_price, \
+                miniblocks.bootloader_code_hash, \
+                miniblocks.default_aa_code_hash, \
+                miniblocks.protocol_version, \
+                l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
+            FROM miniblocks \
+            LEFT JOIN l1_batch_init_params ON miniblocks.l1_batch_number = l1_batch_init_params.number \
+            LEFT JOIN l1_batches ON miniblocks.l1_batch_number = l1_batches.number \
+            LEFT JOIN eth_txs_history as commit_tx ON (l1_batches.eth_commit_tx_id = commit_tx.eth_tx_id AND commit_tx.confirmed_at IS NOT NULL) \
+            LEFT JOIN eth_txs_history as prove_tx ON (l1_batches.eth_prove_tx_id = prove_tx.eth_tx_id AND prove_tx.confirmed_at IS NOT NULL) \
+            LEFT JOIN eth_txs_history as execute_tx ON (l1_batches.eth_execute_tx_id = execute_tx.eth_tx_id AND execute_tx.confirmed_at IS NOT NULL) \
+            WHERE miniblocks.number = $1",
+            block_number.0 as i64
+        )
+        .instrument("get_block_details")
+        .with_arg("block_number", &block_number)
+        .report_latency()
+        .fetch_optional(self.storage.conn())
+        .await?;
 
-            Ok(storage_block_details.map(|storage_block_details| {
-                storage_block_details.into_block_details(current_operator_address)
-            }))
-        }
+        Ok(storage_block_details.map(|storage_block_details| {
+            storage_block_details.into_block_details(current_operator_address)
+        }))
     }
 
     pub async fn get_l1_batch_details(
@@ -466,28 +464,27 @@ impl BlocksWeb3Dal<'_, '_> {
         {
             let l1_batch_details: Option<StorageL1BatchDetails> = sqlx::query_as!(
                 StorageL1BatchDetails,
-                r#"
-                    SELECT l1_batches.number,
-                        l1_batches.timestamp,
-                        l1_batches.l1_tx_count,
-                        l1_batches.l2_tx_count,
-                        l1_batches.hash as "root_hash?",
-                        commit_tx.tx_hash as "commit_tx_hash?",
-                        commit_tx.confirmed_at as "committed_at?",
-                        prove_tx.tx_hash as "prove_tx_hash?",
-                        prove_tx.confirmed_at as "proven_at?",
-                        execute_tx.tx_hash as "execute_tx_hash?",
-                        execute_tx.confirmed_at as "executed_at?",
-                        l1_batches.l1_gas_price,
-                        l1_batches.l2_fair_gas_price,
-                        l1_batches.bootloader_code_hash,
-                        l1_batches.default_aa_code_hash
-                    FROM l1_batches
-                    LEFT JOIN eth_txs_history as commit_tx ON (l1_batches.eth_commit_tx_id = commit_tx.eth_tx_id AND commit_tx.confirmed_at IS NOT NULL)
-                    LEFT JOIN eth_txs_history as prove_tx ON (l1_batches.eth_prove_tx_id = prove_tx.eth_tx_id AND prove_tx.confirmed_at IS NOT NULL)
-                    LEFT JOIN eth_txs_history as execute_tx ON (l1_batches.eth_execute_tx_id = execute_tx.eth_tx_id AND execute_tx.confirmed_at IS NOT NULL)
-                    WHERE l1_batches.number = $1
-                "#,
+                "SELECT l1_batches.number, \
+                    l1_batch_init_params.timestamp, \
+                    l1_batches.l1_tx_count, \
+                    l1_batches.l2_tx_count, \
+                    l1_batches.hash as \"root_hash?\", \
+                    commit_tx.tx_hash as \"commit_tx_hash?\", \
+                    commit_tx.confirmed_at as \"committed_at?\", \
+                    prove_tx.tx_hash as \"prove_tx_hash?\", \
+                    prove_tx.confirmed_at as \"proven_at?\", \
+                    execute_tx.tx_hash as \"execute_tx_hash?\", \
+                    execute_tx.confirmed_at as \"executed_at?\", \
+                    l1_batch_init_params.l1_gas_price, \
+                    l1_batch_init_params.l2_fair_gas_price, \
+                    l1_batch_init_params.bootloader_code_hash, \
+                    l1_batch_init_params.default_aa_code_hash \
+                FROM l1_batches \
+                INNER JOIN l1_batch_init_params ON l1_batches.number = l1_batch_init_params.number \
+                LEFT JOIN eth_txs_history as commit_tx ON (l1_batches.eth_commit_tx_id = commit_tx.eth_tx_id AND commit_tx.confirmed_at IS NOT NULL) \
+                LEFT JOIN eth_txs_history as prove_tx ON (l1_batches.eth_prove_tx_id = prove_tx.eth_tx_id AND prove_tx.confirmed_at IS NOT NULL) \
+                LEFT JOIN eth_txs_history as execute_tx ON (l1_batches.eth_execute_tx_id = execute_tx.eth_tx_id AND execute_tx.confirmed_at IS NOT NULL) \
+                WHERE l1_batches.number = $1",
                 l1_batch_number.0 as i64
             )
             .instrument("get_l1_batch_details")

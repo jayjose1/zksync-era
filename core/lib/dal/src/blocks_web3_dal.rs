@@ -74,15 +74,15 @@ impl BlocksWeb3Dal<'_, '_> {
                 miniblocks.timestamp,
                 miniblocks.base_fee_per_gas,
                 prev_miniblock.hash as parent_hash,
-                l1_batches.timestamp as l1_batch_timestamp,
+                l1_batch_init_params.timestamp as l1_batch_timestamp,
                 transactions.gas_limit as gas_limit,
                 transactions.refunded_gas as refunded_gas,
                 {}
             FROM miniblocks
             LEFT JOIN miniblocks prev_miniblock
                 ON prev_miniblock.number = miniblocks.number - 1
-            LEFT JOIN l1_batches
-                ON l1_batches.number = miniblocks.l1_batch_number
+            LEFT JOIN l1_batch_init_params
+                ON l1_batch_init_params.number = miniblocks.l1_batch_number
             LEFT JOIN transactions
                 ON transactions.miniblock_number = miniblocks.number
             WHERE {}",

@@ -9,7 +9,7 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use sqlx::Row;
 use zksync_types::{
     aggregated_operations::AggregatedActionType,
-    block::{BlockGasCount, L1BatchHeader, L1BatchInitialParams, MiniblockHeader},
+    block::{BlockGasCount, L1BatchHeader, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     commitment::{L1BatchMetadata, L1BatchWithMetadata},
     Address, L1BatchNumber, LogQuery, MiniblockNumber, ProtocolVersionId, H256,
     MAX_GAS_PER_PUBDATA_BYTE, U256,
@@ -308,27 +308,28 @@ impl BlocksDal<'_, '_> {
 
     pub async fn insert_l1_batch(
         &mut self,
-        header: &L1BatchHeader,
+        number: L1BatchNumber,
+        result: &L1BatchResult,
         initial_bootloader_contents: &[(usize, U256)],
         predicted_block_gas: BlockGasCount,
         events_queue: &[LogQuery],
         storage_refunds: &[u32],
     ) -> anyhow::Result<()> {
-        let priority_onchain_data: Vec<Vec<u8>> = header
+        let priority_onchain_data: Vec<Vec<u8>> = result
             .priority_ops_onchain_data
             .iter()
             .map(|data| data.clone().into())
             .collect();
-        let l2_to_l1_logs: Vec<_> = header
+        let l2_to_l1_logs: Vec<_> = result
             .l2_to_l1_logs
             .iter()
             .map(|log| log.0.to_bytes().to_vec())
             .collect();
-        let system_logs = header
+        let system_logs: Vec<_> = result
             .system_logs
             .iter()
             .map(|log| log.0.to_bytes().to_vec())
-            .collect::<Vec<Vec<u8>>>();
+            .collect();
 
         // Serialization should always succeed.
         let initial_bootloader_contents = serde_json::to_value(initial_bootloader_contents)
@@ -336,7 +337,7 @@ impl BlocksDal<'_, '_> {
         let events_queue = serde_json::to_value(events_queue)
             .expect("failed to serialize events_queue to JSON value");
         // Serialization should always succeed.
-        let used_contract_hashes = serde_json::to_value(&header.used_contract_hashes)
+        let used_contract_hashes = serde_json::to_value(&result.used_contract_hashes)
             .expect("failed to serialize used_contract_hashes to JSON value");
 
         let storage_refunds: Vec<_> = storage_refunds.iter().map(|n| *n as i64).collect();
@@ -352,13 +353,13 @@ impl BlocksDal<'_, '_> {
                 system_logs, \
                 storage_refunds, created_at, updated_at \
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now(), now())",
-            header.number.0 as i64,
-            header.l1_tx_count as i32,
-            header.l2_tx_count as i32,
-            header.is_finished,
+            number.0 as i64,
+            result.l1_tx_count as i32,
+            result.l2_tx_count as i32,
+            true,
             &l2_to_l1_logs,
-            &header.l2_to_l1_messages,
-            header.bloom.as_bytes(),
+            &result.l2_to_l1_messages,
+            result.bloom.as_bytes(),
             &priority_onchain_data,
             predicted_block_gas.commit as i64,
             predicted_block_gas.prove as i64,
@@ -373,7 +374,7 @@ impl BlocksDal<'_, '_> {
 
         sqlx::query!(
             "INSERT INTO events_queue (l1_batch_number, serialized_events_queue) VALUES ($1, $2)",
-            header.number.0 as i64,
+            number.0 as i64,
             events_queue
         )
         .execute(transaction.conn())
@@ -1111,6 +1112,7 @@ impl BlocksDal<'_, '_> {
         Ok(Some((H256::from_slice(&hash), row.timestamp as u64)))
     }
 
+    // FIXME: inspect uses (in some cases, only number is used)
     pub async fn get_newest_l1_batch_header(&mut self) -> sqlx::Result<L1BatchHeader> {
         let last_l1_batch = sqlx::query_as!(
             StorageL1BatchHeader,
@@ -1541,7 +1543,7 @@ mod tests {
             .save_protocol_version_with_tx(ProtocolVersion::default())
             .await;
 
-        let mut header = L1BatchHeader::new(
+        let init_params = L1BatchInitialParams::new(
             L1BatchNumber(1),
             100,
             Address::default(),
@@ -1551,21 +1553,34 @@ mod tests {
             },
             ProtocolVersionId::latest(),
         );
-        header.l1_tx_count = 3;
-        header.l2_tx_count = 5;
-        header.l2_to_l1_logs.push(UserL2ToL1Log(L2ToL1Log {
-            shard_id: 0,
-            is_service: false,
-            tx_number_in_block: 2,
-            sender: Address::repeat_byte(2),
-            key: H256::repeat_byte(3),
-            value: H256::zero(),
-        }));
-        header.l2_to_l1_messages.push(vec![22; 22]);
-        header.l2_to_l1_messages.push(vec![33; 33]);
-
         conn.blocks_dal()
-            .insert_l1_batch(&header, &[], BlockGasCount::default(), &[], &[])
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
+
+        let result = L1BatchResult {
+            l1_tx_count: 3,
+            l2_tx_count: 5,
+            l2_to_l1_logs: vec![UserL2ToL1Log(L2ToL1Log {
+                shard_id: 0,
+                is_service: false,
+                tx_number_in_block: 2,
+                sender: Address::repeat_byte(2),
+                key: H256::repeat_byte(3),
+                value: H256::zero(),
+            })],
+            l2_to_l1_messages: vec![vec![22; 22], vec![33; 33]],
+            ..L1BatchResult::default()
+        };
+        conn.blocks_dal()
+            .insert_l1_batch(
+                L1BatchNumber(1),
+                &result,
+                &[],
+                BlockGasCount::default(),
+                &[],
+                &[],
+            )
             .await
             .unwrap();
 
@@ -1575,12 +1590,15 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(loaded_header.number, header.number);
-        assert_eq!(loaded_header.timestamp, header.timestamp);
-        assert_eq!(loaded_header.l1_tx_count, header.l1_tx_count);
-        assert_eq!(loaded_header.l2_tx_count, header.l2_tx_count);
-        assert_eq!(loaded_header.l2_to_l1_logs, header.l2_to_l1_logs);
-        assert_eq!(loaded_header.l2_to_l1_messages, header.l2_to_l1_messages);
+        assert_eq!(loaded_header.params.number, init_params.number);
+        assert_eq!(loaded_header.params.timestamp, init_params.timestamp);
+        assert_eq!(loaded_header.result.l1_tx_count, result.l1_tx_count);
+        assert_eq!(loaded_header.result.l2_tx_count, result.l2_tx_count);
+        assert_eq!(loaded_header.result.l2_to_l1_logs, result.l2_to_l1_logs);
+        assert_eq!(
+            loaded_header.result.l2_to_l1_messages,
+            result.l2_to_l1_messages
+        );
 
         assert!(conn
             .blocks_dal()
@@ -1601,28 +1619,51 @@ mod tests {
         conn.protocol_versions_dal()
             .save_protocol_version_with_tx(ProtocolVersion::default())
             .await;
-        let mut header = L1BatchHeader::new(
+        let mut init_params = L1BatchInitialParams::new(
             L1BatchNumber(1),
             100,
             Address::default(),
             BaseSystemContractsHashes::default(),
             ProtocolVersionId::default(),
         );
+        conn.blocks_dal()
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
+
         let mut predicted_gas = BlockGasCount {
             commit: 2,
             prove: 3,
             execute: 10,
         };
         conn.blocks_dal()
-            .insert_l1_batch(&header, &[], predicted_gas, &[], &[])
+            .insert_l1_batch(
+                init_params.number,
+                &L1BatchResult::default(),
+                &[],
+                predicted_gas,
+                &[],
+                &[],
+            )
             .await
             .unwrap();
 
-        header.number = L1BatchNumber(2);
-        header.timestamp += 100;
+        init_params.number = L1BatchNumber(2);
+        init_params.timestamp += 100;
         predicted_gas += predicted_gas;
         conn.blocks_dal()
-            .insert_l1_batch(&header, &[], predicted_gas, &[], &[])
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
+        conn.blocks_dal()
+            .insert_l1_batch(
+                init_params.number,
+                &L1BatchResult::default(),
+                &[],
+                predicted_gas,
+                &[],
+                &[],
+            )
             .await
             .unwrap();
 

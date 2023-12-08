@@ -530,7 +530,7 @@ impl StorageLogsDal<'_, '_> {
 mod tests {
     use zksync_contracts::BaseSystemContractsHashes;
     use zksync_types::{
-        block::{BlockGasCount, L1BatchHeader},
+        block::{BlockGasCount, L1BatchInitialParams, L1BatchResult},
         ProtocolVersion, ProtocolVersionId,
     };
 
@@ -538,16 +538,26 @@ mod tests {
     use crate::{tests::create_miniblock_header, ConnectionPool};
 
     async fn insert_miniblock(conn: &mut StorageProcessor<'_>, number: u32, logs: Vec<StorageLog>) {
-        let mut header = L1BatchHeader::new(
+        let l1_batch_initial_params = L1BatchInitialParams::new(
             L1BatchNumber(number),
             0,
             Address::default(),
             BaseSystemContractsHashes::default(),
             ProtocolVersionId::default(),
         );
-        header.is_finished = true;
         conn.blocks_dal()
-            .insert_l1_batch(&header, &[], BlockGasCount::default(), &[], &[])
+            .insert_l1_batch_initial_params(&l1_batch_initial_params)
+            .await
+            .unwrap();
+        conn.blocks_dal()
+            .insert_l1_batch(
+                L1BatchNumber(number),
+                &L1BatchResult::default(),
+                &[],
+                BlockGasCount::default(),
+                &[],
+                &[],
+            )
             .await
             .unwrap();
         conn.blocks_dal()

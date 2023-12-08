@@ -10,7 +10,7 @@ use thiserror::Error;
 use zksync_contracts::BaseSystemContractsHashes;
 use zksync_types::{
     api,
-    block::{L1BatchHeader, MiniblockHeader},
+    block::{L1BatchHeader, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     commitment::{L1BatchMetaParameters, L1BatchMetadata},
     l2_to_l1_log::{L2ToL1Log, SystemL2ToL1Log, UserL2ToL1Log},
     Address, L1BatchNumber, MiniblockNumber, H2048, H256,
@@ -64,33 +64,35 @@ impl From<StorageL1BatchHeader> for L1BatchHeader {
         let user_l2_to_l1_logs = convert_l2_to_l1_logs(l1_batch.l2_to_l1_logs);
 
         L1BatchHeader {
-            number: L1BatchNumber(l1_batch.number as u32),
-            is_finished: l1_batch.is_finished,
-            timestamp: l1_batch.timestamp as u64,
-            fee_account_address: Address::from_slice(&l1_batch.fee_account_address),
-            priority_ops_onchain_data,
-            l1_tx_count: l1_batch.l1_tx_count as u16,
-            l2_tx_count: l1_batch.l2_tx_count as u16,
-            l2_to_l1_logs: user_l2_to_l1_logs.into_iter().map(UserL2ToL1Log).collect(),
-            l2_to_l1_messages: l1_batch.l2_to_l1_messages,
-
-            bloom: H2048::from_slice(&l1_batch.bloom),
-            used_contract_hashes: serde_json::from_value(l1_batch.used_contract_hashes)
-                .expect("invalid value for used_contract_hashes in the DB"),
-            base_fee_per_gas: l1_batch
-                .base_fee_per_gas
-                .to_u64()
-                .expect("base_fee_per_gas should fit in u64"),
-            base_system_contracts_hashes: convert_base_system_contracts_hashes(
-                l1_batch.bootloader_code_hash,
-                l1_batch.default_aa_code_hash,
-            ),
-            l1_gas_price: l1_batch.l1_gas_price as u64,
-            l2_fair_gas_price: l1_batch.l2_fair_gas_price as u64,
-            system_logs: system_logs.into_iter().map(SystemL2ToL1Log).collect(),
-            protocol_version: l1_batch
-                .protocol_version
-                .map(|v| (v as u16).try_into().unwrap()),
+            params: L1BatchInitialParams {
+                number: L1BatchNumber(l1_batch.number as u32),
+                timestamp: l1_batch.timestamp as u64,
+                fee_account_address: Address::from_slice(&l1_batch.fee_account_address),
+                base_fee_per_gas: l1_batch
+                    .base_fee_per_gas
+                    .to_u64()
+                    .expect("base_fee_per_gas should fit in u64"),
+                base_system_contracts_hashes: convert_base_system_contracts_hashes(
+                    l1_batch.bootloader_code_hash,
+                    l1_batch.default_aa_code_hash,
+                ),
+                l1_gas_price: l1_batch.l1_gas_price as u64,
+                l2_fair_gas_price: l1_batch.l2_fair_gas_price as u64,
+                protocol_version: l1_batch
+                    .protocol_version
+                    .map(|v| (v as u16).try_into().unwrap()),
+            },
+            result: L1BatchResult {
+                priority_ops_onchain_data,
+                l1_tx_count: l1_batch.l1_tx_count as u16,
+                l2_tx_count: l1_batch.l2_tx_count as u16,
+                l2_to_l1_logs: user_l2_to_l1_logs.into_iter().map(UserL2ToL1Log).collect(),
+                l2_to_l1_messages: l1_batch.l2_to_l1_messages,
+                bloom: H2048::from_slice(&l1_batch.bloom),
+                used_contract_hashes: serde_json::from_value(l1_batch.used_contract_hashes)
+                    .expect("invalid value for used_contract_hashes in the DB"),
+                system_logs: system_logs.into_iter().map(SystemL2ToL1Log).collect(),
+            },
         }
     }
 }
@@ -183,33 +185,35 @@ impl From<StorageL1Batch> for L1BatchHeader {
         let user_l2_to_l1_logs = convert_l2_to_l1_logs(l1_batch.l2_to_l1_logs);
 
         L1BatchHeader {
-            number: L1BatchNumber(l1_batch.number as u32),
-            is_finished: l1_batch.is_finished,
-            timestamp: l1_batch.timestamp as u64,
-            fee_account_address: Address::from_slice(&l1_batch.fee_account_address),
-            priority_ops_onchain_data,
-            l1_tx_count: l1_batch.l1_tx_count as u16,
-            l2_tx_count: l1_batch.l2_tx_count as u16,
-            l2_to_l1_logs: user_l2_to_l1_logs.into_iter().map(UserL2ToL1Log).collect(),
-            l2_to_l1_messages: l1_batch.l2_to_l1_messages,
-
-            bloom: H2048::from_slice(&l1_batch.bloom),
-            used_contract_hashes: serde_json::from_value(l1_batch.used_contract_hashes)
-                .expect("invalid value for used_contract_hashes in the DB"),
-            base_fee_per_gas: l1_batch
-                .base_fee_per_gas
-                .to_u64()
-                .expect("base_fee_per_gas should fit in u64"),
-            base_system_contracts_hashes: convert_base_system_contracts_hashes(
-                l1_batch.bootloader_code_hash,
-                l1_batch.default_aa_code_hash,
-            ),
-            l1_gas_price: l1_batch.l1_gas_price as u64,
-            l2_fair_gas_price: l1_batch.l2_fair_gas_price as u64,
-            system_logs: system_logs.into_iter().map(SystemL2ToL1Log).collect(),
-            protocol_version: l1_batch
-                .protocol_version
-                .map(|v| (v as u16).try_into().unwrap()),
+            params: L1BatchInitialParams {
+                number: L1BatchNumber(l1_batch.number as u32),
+                timestamp: l1_batch.timestamp as u64,
+                fee_account_address: Address::from_slice(&l1_batch.fee_account_address),
+                base_fee_per_gas: l1_batch
+                    .base_fee_per_gas
+                    .to_u64()
+                    .expect("base_fee_per_gas should fit in u64"),
+                base_system_contracts_hashes: convert_base_system_contracts_hashes(
+                    l1_batch.bootloader_code_hash,
+                    l1_batch.default_aa_code_hash,
+                ),
+                l1_gas_price: l1_batch.l1_gas_price as u64,
+                l2_fair_gas_price: l1_batch.l2_fair_gas_price as u64,
+                protocol_version: l1_batch
+                    .protocol_version
+                    .map(|v| (v as u16).try_into().unwrap()),
+            },
+            result: L1BatchResult {
+                priority_ops_onchain_data,
+                l1_tx_count: l1_batch.l1_tx_count as u16,
+                l2_tx_count: l1_batch.l2_tx_count as u16,
+                l2_to_l1_logs: user_l2_to_l1_logs.into_iter().map(UserL2ToL1Log).collect(),
+                l2_to_l1_messages: l1_batch.l2_to_l1_messages,
+                bloom: H2048::from_slice(&l1_batch.bloom),
+                used_contract_hashes: serde_json::from_value(l1_batch.used_contract_hashes)
+                    .expect("invalid value for used_contract_hashes in the DB"),
+                system_logs: system_logs.into_iter().map(SystemL2ToL1Log).collect(),
+            },
         }
     }
 }

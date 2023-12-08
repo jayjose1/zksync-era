@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use zksync_contracts::BaseSystemContractsHashes;
 use zksync_types::{
-    block::{miniblock_hash, L1BatchHeader, MiniblockHeader},
+    block::{miniblock_hash, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     fee::{Fee, TransactionExecutionMetrics},
     helpers::unix_timestamp_ms,
     l1::{L1Tx, OpProcessingType, PriorityQueueType},
@@ -282,9 +282,9 @@ async fn test_duplicate_insert_prover_jobs() {
         .protocol_versions_dal()
         .save_prover_protocol_version(Default::default())
         .await;
-    let block_number = 1;
-    let header = L1BatchHeader::new(
-        L1BatchNumber(block_number),
+    let l1_batch_number = 1;
+    let init_params = L1BatchInitialParams::new(
+        L1BatchNumber(l1_batch_number),
         0,
         Default::default(),
         Default::default(),
@@ -292,13 +292,25 @@ async fn test_duplicate_insert_prover_jobs() {
     );
     storage
         .blocks_dal()
-        .insert_l1_batch(&header, &[], Default::default(), &[], &[])
+        .insert_l1_batch_initial_params(&init_params)
+        .await
+        .unwrap();
+    storage
+        .blocks_dal()
+        .insert_l1_batch(
+            init_params.number,
+            &L1BatchResult::default(),
+            &[],
+            Default::default(),
+            &[],
+            &[],
+        )
         .await
         .unwrap();
 
     let mut prover_dal = ProverDal { storage };
     let circuits = create_circuits();
-    let l1_batch_number = L1BatchNumber(block_number);
+    let l1_batch_number = L1BatchNumber(l1_batch_number);
     prover_dal
         .insert_prover_jobs(
             l1_batch_number,
@@ -346,7 +358,7 @@ async fn test_requeue_prover_jobs() {
         .save_prover_protocol_version(Default::default())
         .await;
     let block_number = 1;
-    let header = L1BatchHeader::new(
+    let init_params = L1BatchInitialParams::new(
         L1BatchNumber(block_number),
         0,
         Default::default(),
@@ -355,7 +367,19 @@ async fn test_requeue_prover_jobs() {
     );
     storage
         .blocks_dal()
-        .insert_l1_batch(&header, &[], Default::default(), &[], &[])
+        .insert_l1_batch_initial_params(&init_params)
+        .await
+        .unwrap();
+    storage
+        .blocks_dal()
+        .insert_l1_batch(
+            init_params.number,
+            &L1BatchResult::default(),
+            &[],
+            Default::default(),
+            &[],
+            &[],
+        )
         .await
         .unwrap();
 

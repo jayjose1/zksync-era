@@ -67,7 +67,7 @@ impl TreeUpdater {
         compute_latency.observe();
 
         let witness_input = metadata.witness.take();
-        let l1_batch_number = l1_batch.header.number;
+        let l1_batch_number = l1_batch.header.params.number;
         let object_key = if let Some(object_store) = &self.object_store {
             let witness_input =
                 witness_input.expect("No witness input provided by tree; this is a bug");
@@ -135,7 +135,7 @@ impl TreeUpdater {
             let check_consistency_latency = METRICS.start_stage(TreeUpdateStage::CheckConsistency);
             Self::check_initial_writes_consistency(
                 storage,
-                header.number,
+                header.params.number,
                 &metadata.initial_writes,
             )
             .await;
@@ -164,6 +164,7 @@ impl TreeUpdater {
 
             let save_postgres_latency = METRICS.start_stage(TreeUpdateStage::SavePostgres);
             let is_pre_boojum = header
+                .params
                 .protocol_version
                 .map(|v| v.is_pre_boojum())
                 .unwrap_or(true);
@@ -209,6 +210,7 @@ impl TreeUpdater {
         last_l1_batch_number + 1
     }
 
+    // FIXME: switch to `L1BatchInitialParams`
     async fn calculate_commitments(
         &self,
         conn: &mut StorageProcessor<'_>,
@@ -218,11 +220,12 @@ impl TreeUpdater {
             METRICS.start_stage(TreeUpdateStage::EventsCommitment);
         let events_queue = conn
             .blocks_dal()
-            .get_events_queue(header.number)
+            .get_events_queue(header.params.number)
             .await
             .unwrap();
 
         let is_pre_boojum = header
+            .params
             .protocol_version
             .map(|v| v.is_pre_boojum())
             .unwrap_or(true);
@@ -238,7 +241,7 @@ impl TreeUpdater {
             METRICS.start_stage(TreeUpdateStage::BootloaderCommitment);
         let initial_bootloader_contents = conn
             .blocks_dal()
-            .get_initial_bootloader_heap(header.number)
+            .get_initial_bootloader_heap(header.params.number)
             .await
             .unwrap()
             .unwrap();

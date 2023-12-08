@@ -158,14 +158,14 @@ impl MetadataCalculator {
         let estimate_latency = METRICS.start_stage(TreeUpdateStage::ReestimateGasCost);
         let unsorted_factory_deps = storage
             .blocks_dal()
-            .get_l1_batch_factory_deps(header.number)
+            .get_l1_batch_factory_deps(header.params.number)
             .await
             .unwrap();
         let commit_gas_cost =
             commit_gas_count_for_l1_batch(header, &unsorted_factory_deps, metadata);
         storage
             .blocks_dal()
-            .update_predicted_l1_batch_commit_gas(header.number, commit_gas_cost)
+            .update_predicted_l1_batch_commit_gas(header.params.number, commit_gas_cost)
             .await
             .unwrap();
         estimate_latency.observe();
@@ -178,6 +178,7 @@ impl MetadataCalculator {
         bootloader_initial_content_commitment: Option<H256>,
     ) -> L1BatchMetadata {
         let is_pre_boojum = header
+            .params
             .protocol_version
             .map(|v| v.is_pre_boojum())
             .unwrap_or(true);
@@ -185,14 +186,14 @@ impl MetadataCalculator {
         let merkle_root_hash = tree_metadata.root_hash;
 
         let commitment = L1BatchCommitment::new(
-            header.l2_to_l1_logs.clone(),
+            header.result.l2_to_l1_logs.clone(),
             tree_metadata.rollup_last_leaf_index,
             merkle_root_hash,
             tree_metadata.initial_writes,
             tree_metadata.repeated_writes,
-            header.base_system_contracts_hashes.bootloader,
-            header.base_system_contracts_hashes.default_aa,
-            header.system_logs.clone(),
+            header.params.base_system_contracts_hashes.bootloader,
+            header.params.base_system_contracts_hashes.default_aa,
+            header.result.system_logs.clone(),
             tree_metadata.state_diffs,
             bootloader_initial_content_commitment.unwrap_or_default(),
             events_queue_commitment.unwrap_or_default(),

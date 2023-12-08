@@ -165,9 +165,9 @@ impl RequestProcessor {
 
                 let is_pre_boojum = l1_batch
                     .header
+                    .params
                     .protocol_version
-                    .map(|v| v.is_pre_boojum())
-                    .unwrap_or(true);
+                    .map_or(true, |v| v.is_pre_boojum());
                 if !is_pre_boojum {
                     let events_queue_state = l1_batch
                         .metadata
@@ -191,12 +191,13 @@ impl RequestProcessor {
                     }
                 }
 
-                let system_logs = serialize_commitments(&l1_batch.header.system_logs);
+                let system_logs = serialize_commitments(&l1_batch.header.result.system_logs);
                 let system_logs_hash = H256(keccak256(&system_logs));
 
                 if !is_pre_boojum {
                     let state_diff_hash = l1_batch
                         .header
+                        .result
                         .system_logs
                         .into_iter()
                         .find(|elem| elem.0.key == u256_to_h256(2.into()))

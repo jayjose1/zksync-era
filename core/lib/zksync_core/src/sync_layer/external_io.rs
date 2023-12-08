@@ -84,7 +84,7 @@ impl ExternalIO {
 
         tracing::info!(
             "Initialized the ExternalIO: current L1 batch number {}, current miniblock number {}",
-            last_sealed_l1_batch_header.number + 1,
+            last_sealed_l1_batch_header.params.number + 1,
             last_miniblock_number + 1,
         );
 
@@ -93,7 +93,7 @@ impl ExternalIO {
         Self {
             miniblock_sealer_handle,
             pool,
-            current_l1_batch_number: last_sealed_l1_batch_header.number + 1,
+            current_l1_batch_number: last_sealed_l1_batch_header.params.number + 1,
             current_miniblock_number: last_miniblock_number + 1,
             actions,
             sync_state,
@@ -256,6 +256,7 @@ impl StateKeeperIO for ExternalIO {
                     self.current_l1_batch_number - 1
                 )
             })
+            .params
             .fee_account_address;
         let pending_miniblock_number = {
             let (_, last_miniblock_number_included_in_l1_batch) = storage

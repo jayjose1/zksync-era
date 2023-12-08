@@ -11,7 +11,7 @@ use multivm::interface::{FinishedL1Batch, L1BatchEnv};
 use zksync_dal::{blocks_dal::ConsensusBlockFields, StorageProcessor};
 use zksync_system_constants::ACCOUNT_CODE_STORAGE_ADDRESS;
 use zksync_types::{
-    block::{unpack_block_info, L1BatchHeader, MiniblockHeader},
+    block::{unpack_block_info, L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     event::{extract_added_tokens, extract_long_l2_to_l1_messages},
     l1::L1Tx,
     l2::L2Tx,
@@ -116,11 +116,24 @@ impl UpdatesManager {
         let l2_to_l1_messages =
             extract_long_l2_to_l1_messages(&finished_batch.final_execution_state.events);
 
-        let l1_batch = L1BatchHeader {
+        // FIXME: move to when params are obtained?
+        let initial_params = L1BatchInitialParams {
             number: l1_batch_env.number,
-            is_finished: true,
             timestamp: l1_batch_env.timestamp,
             fee_account_address: l1_batch_env.fee_account,
+            base_fee_per_gas: l1_batch_env.base_fee(),
+            l1_gas_price: self.l1_gas_price(),
+            l2_fair_gas_price: self.fair_l2_gas_price(),
+            base_system_contracts_hashes: self.base_system_contract_hashes(),
+            protocol_version: Some(self.protocol_version()),
+        };
+        transaction
+            .blocks_dal()
+            .insert_l1_batch_initial_params(&initial_params)
+            .await
+            .unwrap();
+
+        let l1_batch = L1BatchResult {
             priority_ops_onchain_data: self.l1_batch.priority_ops_onchain_data.clone(),
             l1_tx_count: l1_tx_count as u16,
             l2_tx_count: l2_tx_count as u16,
@@ -128,14 +141,8 @@ impl UpdatesManager {
             l2_to_l1_messages,
             bloom: Default::default(),
             used_contract_hashes: finished_batch.final_execution_state.used_contract_hashes,
-            base_fee_per_gas: l1_batch_env.base_fee(),
-            l1_gas_price: self.l1_gas_price(),
-            l2_fair_gas_price: self.fair_l2_gas_price(),
-            base_system_contracts_hashes: self.base_system_contract_hashes(),
-            protocol_version: Some(self.protocol_version()),
             system_logs: finished_batch.final_execution_state.system_logs,
         };
-
         let events_queue = finished_batch
             .final_execution_state
             .deduplicated_events_logs;
@@ -143,6 +150,7 @@ impl UpdatesManager {
         transaction
             .blocks_dal()
             .insert_l1_batch(
+                initial_params.number,
                 &l1_batch,
                 finished_batch.final_bootloader_memory.as_ref().unwrap(),
                 self.l1_batch.l1_gas_count,

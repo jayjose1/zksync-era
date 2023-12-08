@@ -97,10 +97,10 @@ impl FetcherCursor {
         // Decide whether the next batch should be explicitly opened or not.
         let l1_batch = if was_new_batch_open {
             // No `OpenBatch` action needed.
-            last_sealed_l1_batch_header.number + 1
+            last_sealed_l1_batch_header.params.number + 1
         } else {
             // We need to open the next batch.
-            last_sealed_l1_batch_header.number
+            last_sealed_l1_batch_header.params.number
         };
 
         Ok(Self {

@@ -116,10 +116,10 @@ impl EthSenderMetrics {
 
         for header in l1_batch_headers {
             APP_METRICS.block_latency[&stage].observe(Duration::from_secs(
-                seconds_since_epoch() - header.timestamp,
+                seconds_since_epoch() - header.params.timestamp,
             ));
-            APP_METRICS.processed_txs[&stage.into()].inc_by(header.tx_count() as u64);
-            APP_METRICS.processed_l1_txs[&stage.into()].inc_by(header.tx_count() as u64);
+            APP_METRICS.processed_txs[&stage.into()].inc_by(header.result.tx_count() as u64);
+            APP_METRICS.processed_l1_txs[&stage.into()].inc_by(header.result.tx_count() as u64);
         }
         metrics_latency.observe();
     }

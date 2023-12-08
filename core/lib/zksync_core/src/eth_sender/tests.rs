@@ -14,7 +14,7 @@ use zksync_types::{
     aggregated_operations::{
         AggregatedOperation, L1BatchCommitOperation, L1BatchExecuteOperation, L1BatchProofOperation,
     },
-    block::L1BatchHeader,
+    block::{L1BatchHeader, L1BatchInitialParams, L1BatchResult},
     commitment::{L1BatchMetaParameters, L1BatchMetadata, L1BatchWithMetadata},
     ethabi::Token,
     helpers::unix_timestamp_ms,
@@ -35,13 +35,16 @@ type MockEthTxManager = EthTxManager<Arc<MockEthereum>, GasAdjuster<Arc<MockEthe
 static DUMMY_OPERATION: Lazy<AggregatedOperation> = Lazy::new(|| {
     AggregatedOperation::Execute(L1BatchExecuteOperation {
         l1_batches: vec![L1BatchWithMetadata {
-            header: L1BatchHeader::new(
-                L1BatchNumber(1),
-                1,
-                Address::default(),
-                BaseSystemContractsHashes::default(),
-                ProtocolVersionId::latest(),
-            ),
+            header: L1BatchHeader {
+                params: L1BatchInitialParams::new(
+                    L1BatchNumber(1),
+                    1,
+                    Address::default(),
+                    BaseSystemContractsHashes::default(),
+                    ProtocolVersionId::latest(),
+                ),
+                result: L1BatchResult::default(),
+            },
             metadata: default_l1_batch_metadata(),
             factory_deps: Vec::new(),
         }],
@@ -581,7 +584,7 @@ async fn correct_order_for_confirmations() -> anyhow::Result<()> {
         .await
         .unwrap();
     assert_eq!(l1_batches.len(), 1);
-    assert_eq!(l1_batches[0].header.number.0, 2);
+    assert_eq!(l1_batches[0].header.params.number, L1BatchNumber(2));
 
     execute_l1_batches(&mut tester, vec![second_l1_batch.clone()], true).await;
     let l1_batches = tester
@@ -761,7 +764,7 @@ async fn skipped_l1_batch_in_the_middle() -> anyhow::Result<()> {
         .unwrap();
     // We should return all L1 batches including the third one
     assert_eq!(l1_batches.len(), 3);
-    assert_eq!(l1_batches[0].header.number.0, 2);
+    assert_eq!(l1_batches[0].header.params.number, L1BatchNumber(2));
 
     confirm_tx(&mut tester, third_l1_batch_commit_tx_hash).await;
     let l1_batches = tester
@@ -873,21 +876,24 @@ async fn insert_genesis_protocol_version(tester: &EthSenderTester) {
 }
 
 async fn insert_l1_batch(tester: &EthSenderTester, number: L1BatchNumber) -> L1BatchHeader {
-    let mut header = L1BatchHeader::new(
+    let mut storage = tester.storage().await;
+    let params = L1BatchInitialParams::new(
         number,
         0,
         Address::zero(),
         BaseSystemContractsHashes::default(),
-        Default::default(),
+        ProtocolVersionId::default(),
     );
-    header.is_finished = true;
-
-    // Save L1 batch to the database
-    tester
-        .storage()
-        .await
+    storage
         .blocks_dal()
-        .insert_l1_batch(&header, &[], Default::default(), &[], &[])
+        .insert_l1_batch_initial_params(&params)
+        .await
+        .unwrap();
+
+    let result = L1BatchResult::default();
+    storage
+        .blocks_dal()
+        .insert_l1_batch(number, &result, &[], Default::default(), &[], &[])
         .await
         .unwrap();
     tester
@@ -895,14 +901,14 @@ async fn insert_l1_batch(tester: &EthSenderTester, number: L1BatchNumber) -> L1B
         .await
         .blocks_dal()
         .save_l1_batch_metadata(
-            header.number,
+            number,
             &default_l1_batch_metadata(),
             Default::default(),
             false,
         )
         .await
         .unwrap();
-    header
+    L1BatchHeader { params, result }
 }
 
 async fn execute_l1_batches(

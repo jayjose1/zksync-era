@@ -473,8 +473,8 @@ async fn external_io_with_multiple_l1_batches() {
         .await
         .unwrap()
         .expect("L1 batch #1 is not persisted");
-    assert_eq!(l1_batch_header.timestamp, 1);
-    assert_eq!(l1_batch_header.l2_tx_count, 1);
+    assert_eq!(l1_batch_header.params.timestamp, 1);
+    assert_eq!(l1_batch_header.result.l2_tx_count, 1);
 
     let (first_miniblock, last_miniblock) = storage
         .blocks_dal()

@@ -102,6 +102,7 @@ impl ConsistencyChecker {
 
         let commit_function = if block_metadata
             .header
+            .params
             .protocol_version
             .unwrap()
             .is_pre_boojum()

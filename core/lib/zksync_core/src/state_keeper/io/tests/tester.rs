@@ -9,7 +9,7 @@ use zksync_dal::ConnectionPool;
 use zksync_eth_client::clients::mock::MockEthereum;
 use zksync_object_store::ObjectStoreFactory;
 use zksync_types::{
-    block::{L1BatchHeader, MiniblockHeader},
+    block::{L1BatchInitialParams, L1BatchResult, MiniblockHeader},
     protocol_version::L1VerifierConfig,
     system_contracts::get_system_smart_contracts,
     Address, L1BatchNumber, L2ChainId, MiniblockNumber, PriorityOpId, ProtocolVersionId, H256,
@@ -147,29 +147,40 @@ impl Tester {
     }
 
     pub(super) async fn insert_sealed_batch(&self, pool: &ConnectionPool, number: u32) {
-        let mut batch_header = L1BatchHeader::new(
+        let params = L1BatchInitialParams::new(
             L1BatchNumber(number),
             self.current_timestamp,
             Address::default(),
             self.base_system_contracts.hashes(),
             Default::default(),
         );
-        batch_header.is_finished = true;
 
         let mut storage = pool.access_storage_tagged("state_keeper").await.unwrap();
         storage
             .blocks_dal()
-            .insert_l1_batch(&batch_header, &[], Default::default(), &[], &[])
+            .insert_l1_batch_initial_params(&params)
             .await
             .unwrap();
         storage
             .blocks_dal()
-            .mark_miniblocks_as_executed_in_l1_batch(batch_header.number)
+            .insert_l1_batch(
+                params.number,
+                &L1BatchResult::default(),
+                &[],
+                Default::default(),
+                &[],
+                &[],
+            )
             .await
             .unwrap();
         storage
             .blocks_dal()
-            .set_l1_batch_hash(batch_header.number, H256::default())
+            .mark_miniblocks_as_executed_in_l1_batch(params.number)
+            .await
+            .unwrap();
+        storage
+            .blocks_dal()
+            .set_l1_batch_hash(params.number, H256::default())
             .await
             .unwrap();
     }

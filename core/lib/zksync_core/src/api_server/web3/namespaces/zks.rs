@@ -356,7 +356,9 @@ impl<G: L1GasPriceProvider> ZksNamespace<G> {
 
         let merkle_tree_leaves = all_l1_logs_in_batch.iter().map(L2ToL1Log::to_bytes);
 
+        // FIXME: there's `get_batch_protocol_version_id` to get just protocol_version
         let min_tree_size = if batch
+            .params
             .protocol_version
             .map(|v| v.is_pre_boojum())
             .unwrap_or(true)

@@ -200,7 +200,7 @@ impl Aggregator {
         ready_for_commit_l1_batches
             .iter()
             .reduce(|last_batch, next_batch| {
-                if last_batch.header.number + 1 == next_batch.header.number {
+                if last_batch.header.params.number + 1 == next_batch.header.params.number {
                     next_batch
                 } else {
                     panic!("L1 batches prepared for commit are not sequential");
@@ -320,7 +320,9 @@ impl Aggregator {
         )
         .await?;
 
-        let prev_l1_batch_number = batches.first().map(|batch| batch.header.number - 1)?;
+        let prev_l1_batch_number = batches
+            .first()
+            .map(|batch| batch.header.params.number - 1)?;
         let prev_batch = storage
             .blocks_dal()
             .get_l1_batch_metadata(prev_l1_batch_number)
@@ -419,7 +421,7 @@ async fn extract_ready_subrange(
     Some(
         unpublished_l1_batches
             .into_iter()
-            .take_while(|l1_batch| l1_batch.header.number <= last_l1_batch)
+            .take_while(|l1_batch| l1_batch.header.params.number <= last_l1_batch)
             .collect(),
     )
 }

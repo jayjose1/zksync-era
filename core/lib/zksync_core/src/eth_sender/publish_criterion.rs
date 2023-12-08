@@ -46,7 +46,7 @@ impl L1BatchPublishCriterion for NumberCriterion {
     ) -> Option<L1BatchNumber> {
         let mut batch_numbers = consecutive_l1_batches
             .iter()
-            .map(|batch| batch.header.number.0);
+            .map(|batch| batch.header.params.number.0);
 
         let first = batch_numbers.next()?;
         let last_batch_number = batch_numbers.last().unwrap_or(first);
@@ -91,24 +91,25 @@ impl L1BatchPublishCriterion for TimestampDeadlineCriterion {
         last_sealed_l1_batch: L1BatchNumber,
     ) -> Option<L1BatchNumber> {
         let first_l1_batch = consecutive_l1_batches.iter().next()?;
-        let last_l1_batch_number = consecutive_l1_batches.iter().last()?.header.number.0;
+        let last_l1_batch_number = consecutive_l1_batches.iter().last()?.header.params.number.0;
         if let Some(max_allowed_lag) = self.max_allowed_lag {
             if last_sealed_l1_batch.0 - last_l1_batch_number >= max_allowed_lag as u32 {
                 return None;
             }
         }
         let oldest_l1_batch_age_seconds =
-            Utc::now().timestamp() as u64 - first_l1_batch.header.timestamp;
+            Utc::now().timestamp() as u64 - first_l1_batch.header.params.timestamp;
         if oldest_l1_batch_age_seconds >= self.deadline_seconds {
             let result = consecutive_l1_batches
                 .last()
                 .unwrap_or(first_l1_batch)
                 .header
+                .params
                 .number;
             tracing::debug!(
                 "`timestamp` publish criterion triggered for op {} with L1 batch range {:?}",
                 self.op,
-                first_l1_batch.header.number.0..=result.0
+                first_l1_batch.header.params.number.0..=result.0
             );
             METRICS.block_aggregation_reason[&(self.op, "timestamp").into()].inc();
             Some(result)
@@ -164,15 +165,16 @@ impl L1BatchPublishCriterion for GasCriterion {
 
         let mut last_l1_batch = None;
         for (index, l1_batch) in consecutive_l1_batches.iter().enumerate() {
-            let batch_gas = self.get_gas_amount(storage, l1_batch.header.number).await;
+            let l1_batch_number = l1_batch.header.params.number;
+            let batch_gas = self.get_gas_amount(storage, l1_batch_number).await;
             if batch_gas >= gas_left {
                 if index == 0 {
                     panic!(
-                        "L1 batch #{} requires {} gas, which is more than the range limit of {}",
-                        l1_batch.header.number, batch_gas, self.gas_limit
+                        "L1 batch #{l1_batch_number} requires {batch_gas} gas, which is more than the range limit of {}",
+                        self.gas_limit
                     );
                 }
-                last_l1_batch = Some(L1BatchNumber(l1_batch.header.number.0 - 1));
+                last_l1_batch = Some(L1BatchNumber(l1_batch_number.0 - 1));
                 break;
             } else {
                 gas_left -= batch_gas;
@@ -180,7 +182,8 @@ impl L1BatchPublishCriterion for GasCriterion {
         }
 
         if let Some(last_l1_batch) = last_l1_batch {
-            let first_l1_batch_number = consecutive_l1_batches.first().unwrap().header.number.0;
+            let first_l1_batch = consecutive_l1_batches.first().unwrap();
+            let first_l1_batch_number = first_l1_batch.header.params.number.0;
             tracing::debug!(
                 "`gas_limit` publish criterion (gas={}) triggered for op {} with L1 batch range {:?}",
                 self.gas_limit - gas_left,
@@ -216,17 +219,18 @@ impl L1BatchPublishCriterion for DataSizeCriterion {
 
         for (index, l1_batch) in consecutive_l1_batches.iter().enumerate() {
             if data_size_left < l1_batch.l1_commit_data_size() {
+                let l1_batch_number = l1_batch.header.params.number;
                 if index == 0 {
                     panic!(
-                        "L1 batch #{} requires {} data, which is more than the range limit of {}",
-                        l1_batch.header.number,
+                        "L1 batch #{l1_batch_number} requires {} data, which is more than the range limit of {}",
                         l1_batch.l1_commit_data_size(),
                         self.data_limit
                     );
                 }
 
-                let first_l1_batch_number = consecutive_l1_batches.first().unwrap().header.number.0;
-                let output = l1_batch.header.number - 1;
+                let first_l1_batch = consecutive_l1_batches.first().unwrap();
+                let first_l1_batch_number = first_l1_batch.header.params.number.0;
+                let output = l1_batch_number - 1;
                 tracing::debug!(
                     "`data_size` publish criterion (data={}) triggered for op {} with L1 batch range {:?}",
                     self.data_limit - data_size_left,

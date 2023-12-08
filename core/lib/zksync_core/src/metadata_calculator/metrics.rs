@@ -151,26 +151,29 @@ impl MetadataCalculator {
                 .observe(elapsed.div_f32(total_logs as f32));
         }
 
-        let total_tx: usize = batch_headers.iter().map(L1BatchHeader::tx_count).sum();
+        let total_tx: usize = batch_headers
+            .iter()
+            .map(|batch| batch.result.tx_count())
+            .sum();
         let total_l1_tx_count: u64 = batch_headers
             .iter()
-            .map(|batch| u64::from(batch.l1_tx_count))
+            .map(|batch| u64::from(batch.result.l1_tx_count))
             .sum();
         APP_METRICS.processed_txs[&BlockStage::Tree.into()].inc_by(total_tx as u64);
         APP_METRICS.processed_l1_txs[&BlockStage::Tree.into()].inc_by(total_l1_tx_count);
         METRICS.log_batch.observe(total_logs);
         METRICS.blocks_batch.observe(batch_headers.len());
 
-        let first_batch_number = batch_headers.first().unwrap().number.0;
-        let last_batch_number = batch_headers.last().unwrap().number.0;
+        let first_batch = batch_headers.first().unwrap();
+        let first_batch_number = first_batch.params.number.0;
+        let last_batch_number = batch_headers.last().unwrap().params.number.0;
         tracing::info!(
             "L1 batches #{:?} processed in tree",
             first_batch_number..=last_batch_number
         );
         APP_METRICS.block_number[&BlockStage::Tree].set(last_batch_number.into());
 
-        let latency =
-            seconds_since_epoch().saturating_sub(batch_headers.first().unwrap().timestamp);
+        let latency = seconds_since_epoch().saturating_sub(first_batch.params.timestamp);
         APP_METRICS.block_latency[&BlockStage::Tree].observe(Duration::from_secs(latency));
     }
 }

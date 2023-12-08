@@ -11,7 +11,10 @@ use zksync_health_check::{CheckHealth, HealthStatus};
 use zksync_merkle_tree::domain::ZkSyncTree;
 use zksync_object_store::{ObjectStore, ObjectStoreFactory};
 use zksync_types::{
-    block::{miniblock_hash, BlockGasCount, L1BatchHeader, MiniblockHeader},
+    block::{
+        miniblock_hash, BlockGasCount, L1BatchHeader, L1BatchInitialParams, L1BatchResult,
+        MiniblockHeader,
+    },
     proofs::PrepareBasicCircuitsJob,
     AccountTreeId, Address, L1BatchNumber, L2ChainId, MiniblockNumber, StorageKey, StorageLog,
     H256,
@@ -280,10 +283,17 @@ async fn test_postgres_backup_recovery(
             unreachable!()
         };
         // Re-insert the last batch without metadata immediately.
+        let l1_batch_number = batch_without_metadata.params.number;
+        storage
+            .blocks_dal()
+            .insert_l1_batch_initial_params(&batch_without_metadata.params)
+            .await
+            .unwrap();
         storage
             .blocks_dal()
             .insert_l1_batch(
-                batch_without_metadata,
+                l1_batch_number,
+                &batch_without_metadata.result,
                 &[],
                 BlockGasCount::default(),
                 &[],
@@ -291,7 +301,7 @@ async fn test_postgres_backup_recovery(
             )
             .await
             .unwrap();
-        insert_initial_writes_for_batch(&mut storage, batch_without_metadata.number).await;
+        insert_initial_writes_for_batch(&mut storage, l1_batch_number).await;
     }
     drop(storage);
 
@@ -311,13 +321,26 @@ async fn test_postgres_backup_recovery(
     // Re-insert L1 batches to the storage after recovery.
     let mut storage = pool.access_storage().await.unwrap();
     for batch_header in &removed_batches {
+        let number = batch_header.params.number;
         let mut txn = storage.start_transaction().await.unwrap();
         txn.blocks_dal()
-            .insert_l1_batch(batch_header, &[], BlockGasCount::default(), &[], &[])
+            .insert_l1_batch_initial_params(&batch_header.params)
             .await
             .unwrap();
-        insert_initial_writes_for_batch(&mut txn, batch_header.number).await;
+        txn.blocks_dal()
+            .insert_l1_batch(
+                number,
+                &batch_header.result,
+                &[],
+                BlockGasCount::default(),
+                &[],
+                &[],
+            )
+            .await
+            .unwrap();
+        insert_initial_writes_for_batch(&mut txn, number).await;
         txn.commit().await.unwrap();
+
         if sleep_between_batches {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -479,29 +502,28 @@ pub(super) async fn extend_db_state(
     let base_system_contracts = BaseSystemContracts::load_from_disk();
     for (idx, batch_logs) in (next_l1_batch..).zip(new_logs) {
         let batch_number = L1BatchNumber(idx);
-        let mut header = L1BatchHeader::new(
+        let init_params = L1BatchInitialParams::new(
             batch_number,
             0,
             Address::default(),
             base_system_contracts.hashes(),
             Default::default(),
         );
-        header.is_finished = true;
 
         // Assumes that L1 batch consists of only one miniblock.
         let miniblock_number = MiniblockNumber(idx);
         let miniblock_header = MiniblockHeader {
             number: miniblock_number,
-            timestamp: header.timestamp,
+            timestamp: init_params.timestamp,
             hash: miniblock_hash(
                 miniblock_number,
-                header.timestamp,
+                init_params.timestamp,
                 H256::zero(),
                 H256::zero(),
             ),
-            l1_tx_count: header.l1_tx_count,
-            l2_tx_count: header.l2_tx_count,
-            base_fee_per_gas: header.base_fee_per_gas,
+            l1_tx_count: 0,
+            l2_tx_count: 0,
+            base_fee_per_gas: init_params.base_fee_per_gas,
             l1_gas_price: 0,
             l2_fair_gas_price: 0,
             base_system_contracts_hashes: base_system_contracts.hashes(),
@@ -511,7 +533,19 @@ pub(super) async fn extend_db_state(
 
         storage
             .blocks_dal()
-            .insert_l1_batch(&header, &[], BlockGasCount::default(), &[], &[])
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
+        storage
+            .blocks_dal()
+            .insert_l1_batch(
+                batch_number,
+                &L1BatchResult::default(),
+                &[],
+                BlockGasCount::default(),
+                &[],
+                &[],
+            )
             .await
             .unwrap();
         storage

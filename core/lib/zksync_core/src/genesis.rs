@@ -8,7 +8,8 @@ use zksync_dal::StorageProcessor;
 use zksync_merkle_tree::domain::ZkSyncTree;
 use zksync_types::{
     block::{
-        legacy_miniblock_hash, BlockGasCount, DeployedContract, L1BatchHeader, MiniblockHeader,
+        legacy_miniblock_hash, BlockGasCount, DeployedContract, L1BatchInitialParams,
+        L1BatchResult, MiniblockHeader,
     },
     commitment::{L1BatchCommitment, L1BatchMetadata},
     get_code_key, get_system_context_init_logs,
@@ -280,14 +281,13 @@ pub(crate) async fn create_genesis_l1_batch(
         tx: None,
     };
 
-    let mut genesis_l1_batch_header = L1BatchHeader::new(
+    let genesis_l1_batch_params = L1BatchInitialParams::new(
         L1BatchNumber(0),
         0,
         first_validator_address,
         base_system_contracts.hashes(),
         ProtocolVersionId::latest(),
     );
-    genesis_l1_batch_header.is_finished = true;
 
     let genesis_miniblock_header = MiniblockHeader {
         number: MiniblockNumber(0),
@@ -311,8 +311,14 @@ pub(crate) async fn create_genesis_l1_batch(
         .await;
     transaction
         .blocks_dal()
+        .insert_l1_batch_initial_params(&genesis_l1_batch_params)
+        .await
+        .unwrap();
+    transaction
+        .blocks_dal()
         .insert_l1_batch(
-            &genesis_l1_batch_header,
+            genesis_l1_batch_params.number,
+            &L1BatchResult::default(),
             &[],
             BlockGasCount::default(),
             &[],

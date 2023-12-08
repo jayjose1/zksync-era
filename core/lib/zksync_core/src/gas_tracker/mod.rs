@@ -100,6 +100,7 @@ pub(crate) fn commit_gas_count_for_l1_batch(
 ) -> u32 {
     let base_cost = l1_batch_base_cost(AggregatedActionType::Commit);
     let total_messages_len: u32 = header
+        .result
         .l2_to_l1_messages
         .iter()
         .map(|message| message.len() as u32)
@@ -112,9 +113,9 @@ pub(crate) fn commit_gas_count_for_l1_batch(
 
     // Boojum upgrade changes how storage writes are communicated/compressed.
     let is_pre_boojum = header
+        .params
         .protocol_version
-        .map(|v| v.is_pre_boojum())
-        .unwrap_or(true);
+        .map_or(true, |v| v.is_pre_boojum());
     let state_diff_size = if is_pre_boojum {
         metadata.initial_writes_compressed.len() as u32
             + metadata.repeated_writes_compressed.len() as u32

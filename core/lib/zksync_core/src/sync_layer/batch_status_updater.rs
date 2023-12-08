@@ -136,6 +136,7 @@ impl BatchStatusUpdater {
             .get_newest_l1_batch_header()
             .await
             .unwrap()
+            .params
             .number;
 
         let mut last_committed_l1_batch = self.last_committed_l1_batch;
@@ -280,6 +281,7 @@ impl BatchStatusUpdater {
             .get_newest_l1_batch_header()
             .await
             .unwrap()
+            .params
             .number;
 
         for change in changes.commit.into_iter() {

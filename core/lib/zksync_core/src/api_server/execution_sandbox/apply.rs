@@ -8,12 +8,13 @@
 
 use std::time::{Duration, Instant};
 
+use anyhow::Context as _;
 use multivm::{
     interface::{L1BatchEnv, L2BlockEnv, SystemEnv, VmInterface},
     vm_latest::{constants::BLOCK_GAS_LIMIT, HistoryDisabled},
     VmInstance,
 };
-use zksync_dal::{ConnectionPool, SqlxError, StorageProcessor};
+use zksync_dal::{ConnectionPool, StorageProcessor};
 use zksync_state::{PostgresStorage, ReadStorage, StorageView, WriteStorage};
 use zksync_system_constants::{
     SYSTEM_CONTEXT_ADDRESS, SYSTEM_CONTEXT_CURRENT_L2_BLOCK_INFO_POSITION,
@@ -304,7 +305,7 @@ impl BlockArgs {
     async fn resolve_block_info(
         &self,
         connection: &mut StorageProcessor<'_>,
-    ) -> Result<ResolvedBlockInfo, SqlxError> {
+    ) -> anyhow::Result<ResolvedBlockInfo> {
         let (state_l2_block_number, vm_l1_batch_number, l1_batch_timestamp) =
             if self.is_pending_miniblock() {
                 let sealed_l1_batch_number = connection
@@ -314,11 +315,11 @@ impl BlockArgs {
                 let sealed_miniblock_header = connection
                     .blocks_dal()
                     .get_last_sealed_miniblock_header()
-                    .await
-                    .unwrap()
-                    .expect("At least one miniblock must exist");
+                    .await?
+                    .context("At least one miniblock must exist")?;
 
                 // Timestamp of the next L1 batch must be greater than the timestamp of the last miniblock.
+                // FIXME: ^ this looks wrong + we might have next L1 batch params stored
                 let l1_batch_timestamp =
                     seconds_since_epoch().max(sealed_miniblock_header.timestamp + 1);
                 (
@@ -332,12 +333,12 @@ impl BlockArgs {
                     .resolve_l1_batch_number_of_miniblock(self.resolved_block_number)
                     .await?
                     .expected_l1_batch();
-                let l1_batch_timestamp = self.l1_batch_timestamp_s.unwrap_or_else(|| {
-                    panic!(
+                let l1_batch_timestamp = self.l1_batch_timestamp_s.with_context(|| {
+                    format!(
                     "L1 batch timestamp is `None`, `block_id`: {:?}, `resolved_block_number`: {}",
                     self.block_id, self.resolved_block_number.0
-                );
-                });
+                )
+                })?;
 
                 (
                     self.resolved_block_number,
@@ -351,14 +352,132 @@ impl BlockArgs {
         let protocol_version = connection
             .blocks_dal()
             .get_miniblock_protocol_version_id(state_l2_block_number)
-            .await
-            .unwrap()
+            .await?
             .unwrap_or(ProtocolVersionId::Version9);
+
         Ok(ResolvedBlockInfo {
             state_l2_block_number,
             vm_l1_batch_number,
             l1_batch_timestamp,
             protocol_version,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use zksync_dal::ConnectionPool;
+    use zksync_types::{
+        block::{L1BatchInitialParams, MiniblockHeader},
+        Address, L2ChainId, ProtocolVersion,
+    };
+
+    use super::*;
+    use crate::genesis::{ensure_genesis_state, GenesisParams};
+
+    async fn save_first_block(conn: &mut StorageProcessor<'_>) {
+        conn.protocol_versions_dal()
+            .save_protocol_version_with_tx(ProtocolVersion {
+                id: ProtocolVersionId::Version15,
+                ..ProtocolVersion::default()
+            })
+            .await;
+
+        let init_params = L1BatchInitialParams::new(
+            L1BatchNumber(1),
+            100,
+            Address::default(),
+            Default::default(),
+            ProtocolVersionId::Version15,
+        );
+        conn.blocks_dal()
+            .insert_l1_batch_initial_params(&init_params)
+            .await
+            .unwrap();
+        let miniblock = MiniblockHeader {
+            number: MiniblockNumber(1),
+            timestamp: 100,
+            hash: H256::default(),
+            l1_tx_count: 3,
+            l2_tx_count: 5,
+            virtual_blocks: 1,
+        };
+        conn.blocks_dal()
+            .insert_miniblock(&miniblock)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn resolving_block_info_for_pending_block() {
+        let pool = ConnectionPool::test_pool().await;
+        let mut conn = pool.access_storage().await.unwrap();
+        assert!(conn.blocks_dal().is_genesis_needed().await.unwrap());
+        let genesis_params = GenesisParams {
+            protocol_version: ProtocolVersionId::Version10,
+            ..GenesisParams::mock()
+        };
+        ensure_genesis_state(&mut conn, L2ChainId::default(), &genesis_params)
+            .await
+            .unwrap();
+
+        let pending_block = BlockArgs::pending(&mut conn).await;
+        assert!(pending_block.is_pending_miniblock());
+        let resolved = pending_block.resolve_block_info(&mut conn).await.unwrap();
+        assert_eq!(resolved.vm_l1_batch_number, L1BatchNumber(1));
+        assert!(resolved.l1_batch_timestamp >= 1);
+        assert_eq!(resolved.state_l2_block_number, MiniblockNumber(0));
+        assert_eq!(resolved.protocol_version, genesis_params.protocol_version);
+
+        save_first_block(&mut conn).await;
+
+        let resolved = pending_block.resolve_block_info(&mut conn).await.unwrap();
+        assert_eq!(resolved.vm_l1_batch_number, L1BatchNumber(1));
+        assert!(resolved.l1_batch_timestamp > 1);
+        assert_eq!(resolved.state_l2_block_number, MiniblockNumber(1));
+        assert_eq!(resolved.protocol_version, ProtocolVersionId::Version15);
+    }
+
+    #[tokio::test]
+    async fn resolving_block_info_for_specific_miniblock() {
+        let pool = ConnectionPool::test_pool().await;
+        let mut conn = pool.access_storage().await.unwrap();
+        assert!(conn.blocks_dal().is_genesis_needed().await.unwrap());
+        let genesis_params = GenesisParams {
+            protocol_version: ProtocolVersionId::Version10,
+            ..GenesisParams::mock()
+        };
+        ensure_genesis_state(&mut conn, L2ChainId::default(), &genesis_params)
+            .await
+            .unwrap();
+
+        let earliest_block = api::BlockId::Number(api::BlockNumber::Earliest);
+        let earliest_block = BlockArgs::new(&mut conn, earliest_block)
+            .await
+            .unwrap()
+            .expect("no earliest block");
+        let resolved = earliest_block.resolve_block_info(&mut conn).await.unwrap();
+        assert_eq!(resolved.vm_l1_batch_number, L1BatchNumber(0));
+        assert_eq!(resolved.l1_batch_timestamp, 0);
+        assert_eq!(resolved.state_l2_block_number, MiniblockNumber(0));
+        assert_eq!(resolved.protocol_version, genesis_params.protocol_version);
+
+        let first_block = api::BlockId::Number(api::BlockNumber::Number(1.into()));
+        assert!(BlockArgs::new(&mut conn, first_block)
+            .await
+            .unwrap()
+            .is_none());
+
+        save_first_block(&mut conn).await;
+
+        let first_block = BlockArgs::new(&mut conn, first_block)
+            .await
+            .unwrap()
+            .expect("no first block");
+        let resolved = first_block.resolve_block_info(&mut conn).await.unwrap();
+        assert_eq!(resolved.vm_l1_batch_number, L1BatchNumber(1));
+        assert_eq!(resolved.l1_batch_timestamp, 100);
+        assert_eq!(resolved.state_l2_block_number, MiniblockNumber(1));
+        assert_eq!(resolved.protocol_version, ProtocolVersionId::Version15);
     }
 }

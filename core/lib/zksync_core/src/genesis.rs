@@ -280,13 +280,12 @@ pub(crate) async fn create_genesis_l1_batch(
         verifier_address,
         tx: None,
     };
-
     let genesis_l1_batch_params = L1BatchInitialParams::new(
         L1BatchNumber(0),
         0,
         first_validator_address,
         base_system_contracts.hashes(),
-        ProtocolVersionId::latest(),
+        version.id, // FIXME: was `ProtocolVersion::latest()`
     );
 
     let genesis_miniblock_header = MiniblockHeader {

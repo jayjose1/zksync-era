@@ -1947,26 +1947,6 @@
     },
     "query": "\n                UPDATE leaf_aggregation_witness_jobs_fri\n                SET status='queued'\n                WHERE (l1_batch_number, circuit_id) IN\n                      (SELECT prover_jobs_fri.l1_batch_number, prover_jobs_fri.circuit_id\n                       FROM prover_jobs_fri\n                                JOIN leaf_aggregation_witness_jobs_fri lawj ON\n                                prover_jobs_fri.l1_batch_number = lawj.l1_batch_number\n                                AND prover_jobs_fri.circuit_id = lawj.circuit_id\n                       WHERE lawj.status = 'waiting_for_proofs'\n                         AND prover_jobs_fri.status = 'successful'\n                         AND prover_jobs_fri.aggregation_round = 0\n                       GROUP BY prover_jobs_fri.l1_batch_number, prover_jobs_fri.circuit_id, lawj.number_of_basic_circuits\n                       HAVING COUNT(*) = lawj.number_of_basic_circuits)\n                RETURNING l1_batch_number, circuit_id;\n            "
   },
-  "2b7bccaa7f67a89eaf19b9b957c0f8d33669bc6b43473131517783a844e165d7": {
-    "describe": {
-      "columns": [
-        {
-          "name": "protocol_version",
-          "ordinal": 0,
-          "type_info": "Int4"
-        }
-      ],
-      "nullable": [
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT protocol_version FROM miniblocks INNER JOIN l1_batch_init_params ON l1_batch_init_params.number = miniblocks.l1_batch_number WHERE miniblocks.number = $1"
-  },
   "2bd9137542076526c245366057f0f3f57c08368f6e0dc86d49293a91875272b8": {
     "describe": {
       "columns": [
@@ -6815,6 +6795,26 @@
       }
     },
     "query": "\n                SELECT value\n                FROM storage_logs\n                WHERE storage_logs.hashed_key = $1 AND storage_logs.miniblock_number <= $2\n                ORDER BY storage_logs.miniblock_number DESC, storage_logs.operation_number DESC\n                LIMIT 1\n                "
+  },
+  "94245a7b70b7da16e9f8369db0802192bf43b8ae29a12d5e05e029dd11695446": {
+    "describe": {
+      "columns": [
+        {
+          "name": "protocol_version",
+          "ordinal": 0,
+          "type_info": "Int4"
+        }
+      ],
+      "nullable": [
+        true
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT protocol_version FROM miniblocks INNER JOIN l1_batch_init_params ON l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) WHERE miniblocks.number = $1"
   },
   "944c38995043e7b11e6633beb68b5479059ff27b26fd2df171a3d9650f070547": {
     "describe": {

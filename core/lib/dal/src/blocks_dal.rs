@@ -1449,7 +1449,7 @@ impl BlocksDal<'_, '_> {
         Ok(())
     }
 
-    // FIXME: remove in favor of `get_batch_protocol_version_id`?
+    /// Gets a protocol version for the specified miniblock.
     pub async fn get_miniblock_protocol_version_id(
         &mut self,
         miniblock_number: MiniblockNumber,
@@ -1457,7 +1457,8 @@ impl BlocksDal<'_, '_> {
         let Some(row) = sqlx::query!(
             "SELECT protocol_version \
             FROM miniblocks \
-            INNER JOIN l1_batch_init_params ON l1_batch_init_params.number = miniblocks.l1_batch_number \
+            INNER JOIN l1_batch_init_params \
+                ON l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) \
             WHERE miniblocks.number = $1",
             miniblock_number.0 as i64
         )

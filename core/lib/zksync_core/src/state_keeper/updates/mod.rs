@@ -152,7 +152,7 @@ pub(crate) struct MiniblockSealCommand {
     pub miniblock_number: MiniblockNumber,
     pub miniblock: MiniblockUpdates,
     pub first_tx_index: usize,
-    pub base_fee_per_gas: u64, // FIXME: this field looks bogus
+    pub base_fee_per_gas: u64,
     pub l2_erc20_bridge_addr: Address,
     pub consensus: Option<ConsensusBlockFields>,
     /// Whether transactions should be pre-inserted to DB.

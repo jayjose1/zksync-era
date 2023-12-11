@@ -253,10 +253,23 @@ async fn external_io_basics() {
         .wait(|state| state.get_local_block() == MiniblockNumber(1))
         .await;
 
-    // FIXME: also check l1 batch init params
+    // Check that the L1 batch initial params are persisted.
+    let mut storage = pool.access_storage().await.unwrap();
+    let init_params = storage
+        .blocks_dal()
+        .get_l1_batch_initial_params(L1BatchNumber(1))
+        .await
+        .unwrap()
+        .expect("Init params for L1 batch #1 are not persisted");
+    assert_eq!(init_params.l1_gas_price, 2);
+    assert_eq!(init_params.l2_fair_gas_price, 3);
+    assert_eq!(init_params.timestamp, 1);
+    assert_eq!(
+        init_params.protocol_version,
+        Some(ProtocolVersionId::latest())
+    );
 
     // Check that the miniblock is persisted.
-    let mut storage = pool.access_storage().await.unwrap();
     let miniblock = storage
         .blocks_dal()
         .get_miniblock_header(MiniblockNumber(1))

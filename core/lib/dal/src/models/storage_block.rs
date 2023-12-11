@@ -63,7 +63,6 @@ impl From<StorageL1BatchInitialParams> for L1BatchInitialParams {
 pub struct StorageL1BatchHeader {
     pub number: i64,
     pub timestamp: i64,
-    pub is_finished: bool,
     pub l1_tx_count: i32,
     pub l2_tx_count: i32,
     pub fee_account_address: Vec<u8>,
@@ -161,7 +160,6 @@ fn convert_base_system_contracts_hashes(
 pub struct StorageL1Batch {
     pub number: i64,
     pub timestamp: i64,
-    pub is_finished: bool,
     pub l1_tx_count: i32,
     pub l2_tx_count: i32,
     pub fee_account_address: Vec<u8>,

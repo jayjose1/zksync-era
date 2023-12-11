@@ -1,0 +1,2 @@
+ALTER TABLE l1_batches
+    ADD COLUMN is_finished BOOLEAN NOT NULL DEFAULT true;

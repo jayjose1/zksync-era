@@ -72,11 +72,11 @@ pub struct FetcherCursor {
 impl FetcherCursor {
     /// Loads the cursor from Postgres.
     pub async fn new(storage: &mut StorageProcessor<'_>) -> anyhow::Result<Self> {
-        let last_sealed_l1_batch_header = storage
+        let last_sealed_l1_batch_number = storage
             .blocks_dal()
-            .get_newest_l1_batch_header()
+            .get_sealed_l1_batch_number()
             .await
-            .context("Failed getting newest L1 batch header")?;
+            .context("Failed getting newest L1 batch number")?;
         let last_miniblock_header = storage
             .blocks_dal()
             .get_last_sealed_miniblock_header()
@@ -97,10 +97,10 @@ impl FetcherCursor {
         // Decide whether the next batch should be explicitly opened or not.
         let l1_batch = if was_new_batch_open {
             // No `OpenBatch` action needed.
-            last_sealed_l1_batch_header.params.number + 1
+            last_sealed_l1_batch_number + 1
         } else {
             // We need to open the next batch.
-            last_sealed_l1_batch_header.params.number
+            last_sealed_l1_batch_number
         };
 
         Ok(Self {

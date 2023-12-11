@@ -70,9 +70,9 @@ impl ExternalIO {
         chain_id: L2ChainId,
     ) -> Self {
         let mut storage = pool.access_storage_tagged("sync_layer").await.unwrap();
-        let last_sealed_l1_batch_header = storage
+        let last_sealed_l1_batch_number = storage
             .blocks_dal()
-            .get_newest_l1_batch_header()
+            .get_sealed_l1_batch_number()
             .await
             .unwrap();
         let last_miniblock_number = storage
@@ -84,7 +84,7 @@ impl ExternalIO {
 
         tracing::info!(
             "Initialized the ExternalIO: current L1 batch number {}, current miniblock number {}",
-            last_sealed_l1_batch_header.params.number + 1,
+            last_sealed_l1_batch_number + 1,
             last_miniblock_number + 1,
         );
 
@@ -93,7 +93,7 @@ impl ExternalIO {
         Self {
             miniblock_sealer_handle,
             pool,
-            current_l1_batch_number: last_sealed_l1_batch_header.params.number + 1,
+            current_l1_batch_number: last_sealed_l1_batch_number + 1,
             current_miniblock_number: last_miniblock_number + 1,
             actions,
             sync_state,

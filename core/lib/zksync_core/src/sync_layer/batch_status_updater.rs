@@ -133,11 +133,9 @@ impl BatchStatusUpdater {
             .await
             .unwrap()
             .blocks_dal()
-            .get_newest_l1_batch_header()
+            .get_sealed_l1_batch_number()
             .await
-            .unwrap()
-            .params
-            .number;
+            .unwrap();
 
         let mut last_committed_l1_batch = self.last_committed_l1_batch;
         let mut last_proven_l1_batch = self.last_proven_l1_batch;
@@ -278,11 +276,9 @@ impl BatchStatusUpdater {
 
         let last_sealed_batch = transaction
             .blocks_dal()
-            .get_newest_l1_batch_header()
+            .get_sealed_l1_batch_number()
             .await
-            .unwrap()
-            .params
-            .number;
+            .unwrap();
 
         for change in changes.commit.into_iter() {
             tracing::info!(

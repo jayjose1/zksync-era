@@ -1,4 +1,4 @@
-use zksync_types::{api::en::SyncBlock, Address, MiniblockNumber, Transaction};
+use zksync_types::{api::en::SyncBlock, MiniblockNumber, Transaction};
 
 use crate::{
     instrument::InstrumentExt,
@@ -17,7 +17,6 @@ impl SyncDal<'_, '_> {
     pub async fn sync_block(
         &mut self,
         block_number: MiniblockNumber,
-        current_operator_address: Address, // FIXME: remove
         include_transactions: bool,
     ) -> anyhow::Result<Option<SyncBlock>> {
         let latency = MethodLatency::new("sync_dal_sync_block");
@@ -36,7 +35,7 @@ impl SyncDal<'_, '_> {
                 miniblocks.hash, \
                 miniblocks.consensus, \
                 l1_batch_init_params.protocol_version as \"protocol_version!\", \
-                l1_batch_init_params.fee_account_address as \"fee_account_address?\" \
+                l1_batch_init_params.fee_account_address as \"fee_account_address!\" \
             FROM miniblocks \
             INNER JOIN l1_batch_init_params ON \
                 l1_batch_init_params.number = COALESCE(miniblocks.l1_batch_number, (SELECT MAX(number) FROM l1_batch_init_params)) \
@@ -67,8 +66,7 @@ impl SyncDal<'_, '_> {
             None
         };
 
-        let block =
-            storage_block_details.into_sync_block(current_operator_address, transactions)?;
+        let block = storage_block_details.into_sync_block(transactions)?;
         drop(latency);
         Ok(Some(block))
     }
@@ -79,7 +77,7 @@ mod tests {
     use zksync_types::{
         block::{BlockGasCount, L1BatchInitialParams, L1BatchResult},
         fee::TransactionExecutionMetrics,
-        L1BatchNumber, ProtocolVersion, ProtocolVersionId,
+        Address, L1BatchNumber, ProtocolVersion, ProtocolVersionId,
     };
 
     use super::*;
@@ -130,7 +128,7 @@ mod tests {
 
         assert!(conn
             .sync_dal()
-            .sync_block(MiniblockNumber(1), Address::default(), false)
+            .sync_block(MiniblockNumber(1), false)
             .await
             .unwrap()
             .is_none());
@@ -161,7 +159,7 @@ mod tests {
 
         let block = conn
             .sync_dal()
-            .sync_block(MiniblockNumber(1), Address::default(), false)
+            .sync_block(MiniblockNumber(1), false)
             .await
             .unwrap()
             .expect("no sync block");
@@ -184,7 +182,7 @@ mod tests {
 
         let block = conn
             .sync_dal()
-            .sync_block(MiniblockNumber(1), Address::default(), true)
+            .sync_block(MiniblockNumber(1), true)
             .await
             .unwrap()
             .expect("no sync block");
@@ -209,7 +207,7 @@ mod tests {
 
         let block = conn
             .sync_dal()
-            .sync_block(MiniblockNumber(1), Address::default(), true)
+            .sync_block(MiniblockNumber(1), true)
             .await
             .unwrap()
             .expect("no sync block");

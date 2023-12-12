@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/matter-labs/zksync-era/compare/zksync-rs-v0.4.0...zksync-rs-v0.5.0) (2023-12-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* boojum integration ([#112](https://github.com/matter-labs/zksync-era/issues/112))
+
+### Features
+
+* boojum integration ([#112](https://github.com/matter-labs/zksync-era/issues/112)) ([e76d346](https://github.com/matter-labs/zksync-era/commit/e76d346d02ded771dea380aa8240da32119d7198))
+
 ## [0.4.0](https://github.com/matter-labs/zksync-2-dev/compare/zksync-v0.3.0...zksync-v0.4.0) (2023-03-23)
 
 

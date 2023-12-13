@@ -80,9 +80,9 @@ RUST_LIB_BACKTRACE=1
 # URL of the main zkSync node.
 EN_MAIN_NODE_URL=https://sepolia.era.zksync.dev
 
-EN_L2_CHAIN_ID=300
-EN_L1_CHAIN_ID=11155111
-
+EN_L2_CHAIN_ID=wss://eth-sepolia.g.alchemy.com/v2/vpDHOlPfAnj1J8ajv_qhIhoklXdxlLcV
+EN_L1_CHAIN_ID=https://eth-sepolia.g.alchemy.com/v2/vpDHOlPfAnj1J8ajv_qhIhoklXdxlLcV
+#wallet testnet id= 0xD791351d68960B06F3bD6a4d1e3DaCb993F3D85C
 # Optional, required only if sentry is configured. 
 EN_SENTRY_ENVIRONMENT=zksync_testnet
 
